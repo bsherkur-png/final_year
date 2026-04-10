@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
@@ -12,6 +13,9 @@ except ImportError:
         "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is",
         "it", "of", "on", "or", "that", "the", "to", "was", "were", "will", "with",
     }
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class ArticlePreprocessor:
@@ -56,6 +60,11 @@ class ArticlePreprocessor:
     def preprocess_body(self, body: str) -> str:
         return " ".join(self.tokenize_body(body))
 
+    def minimal_preprocess_body(self, body: str) -> str:
+        if body is None or pd.isna(body):
+            return ""
+        return str(body).strip()
+
     def preprocess_titles(self, titles: Iterable[str]) -> list[str]:
         if self.nlp is None:
             return [self.preprocess_title(title) for title in titles]
@@ -77,6 +86,36 @@ class ArticlePreprocessor:
             processed_bodies.append(" ".join(self._extract_body_tokens(doc)))
 
         return processed_bodies
+
+    def preprocess_body_csv(
+        self,
+        input_path: str | Path,
+        output_path: str | Path,
+        id_column: str = "id",
+        body_column: str = "text",
+    ) -> pd.DataFrame:
+        df = pd.read_csv(input_path)
+        processed_rows = []
+
+        for _, row in df.iterrows():
+            original_body_text = "" if pd.isna(row[body_column]) else str(row[body_column])
+            minimal_body_text = self.minimal_preprocess_body(original_body_text)
+            fully_preprocessed_body_text = self.preprocess_body(minimal_body_text)
+
+            processed_rows.append(
+                {
+                    "article_id": row[id_column],
+                    "original_body_text": original_body_text,
+                    "minimal_body_text": minimal_body_text,
+                    "fully_preprocessed_body_text": fully_preprocessed_body_text,
+                }
+            )
+
+        output_df = pd.DataFrame(processed_rows)
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_df.to_csv(output_path, index=False)
+        return output_df
 
     def prepare_titles_for_clustering(
         self,
@@ -166,3 +205,16 @@ class ArticlePreprocessor:
                 f"spaCy model '{model_name}' is required for body preprocessing. "
                 "Install it with: python -m spacy download en_core_web_sm"
             ) from exc
+
+
+def main():
+    input_path = PROJECT_ROOT / "data" / "intermediate" / "sample_body_urls.csv"
+    output_path = PROJECT_ROOT / "data" / "intermediate" / "sample_body_urls_preprocessed.csv"
+
+    preprocessor = ArticlePreprocessor.from_spacy_model()
+    processed_df = preprocessor.preprocess_body_csv(input_path, output_path)
+    print(f"Saved {len(processed_df)} rows to {output_path}")
+
+
+if __name__ == "__main__":
+    main()

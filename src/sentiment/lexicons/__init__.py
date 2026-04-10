@@ -1,4 +1,3 @@
-from src.sentiment.lexicons.sentiment_analyzer import MultiLexiconSentimentAnalyzer
+from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer
 
-
-__all__ = ["MultiLexiconSentimentAnalyzer"]
+__all__ = ["LexiconScorer"]
