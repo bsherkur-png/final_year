@@ -1,0 +1,5 @@
+from src.clustering.topic_clusterer.service import main
+
+
+if __name__ == "__main__":
+    main()
