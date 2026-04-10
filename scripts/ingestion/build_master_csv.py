@@ -5,7 +5,7 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INPUT = PROJECT_ROOT / "data" / "raw" / "news_meta_data.csv"
-DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "combined_news.csv"
+DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "master_articles.csv"
 
 
 def get_column_name(df, possible_names):
