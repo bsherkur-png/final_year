@@ -1,5 +1,7 @@
 import unittest
 
+import pandas as pd
+
 from src.preprocessing.article_preprocessor import ArticlePreprocessor
 
 
@@ -71,6 +73,70 @@ class ArticlePreprocessorTests(unittest.TestCase):
 
         self.assertEqual(processed, ["market fall fast", ""])
         self.assertEqual(fake_nlp.calls, ["markets are falling fast", ""])
+
+    def test_prepare_titles_for_clustering_preserves_identical_duplicate_rows(self):
+        preprocessor = ArticlePreprocessor()
+        df = pd.DataFrame(
+            {
+                "article_id": ["a1", "a1", "a2"],
+                "title": ["Budget debate today", "Budget debate today", "Migration policy debate"],
+            }
+        )
+
+        prepared = preprocessor.prepare_titles_for_clustering(df)
+
+        self.assertEqual(list(prepared.columns), ["article_id", "title", "processed_title"])
+        self.assertEqual(len(prepared), 3)
+        self.assertEqual(prepared.loc[0, "article_id"], "a1")
+        self.assertEqual(prepared.loc[1, "article_id"], "a1")
+        self.assertEqual(prepared.loc[0, "title"], "Budget debate today")
+        self.assertEqual(prepared.loc[1, "title"], "Budget debate today")
+
+    def test_prepare_titles_for_clustering_preserves_same_title_across_article_ids(self):
+        preprocessor = ArticlePreprocessor()
+        df = pd.DataFrame(
+            {
+                "article_id": ["a10", "a11"],
+                "title": ["Migration policy debate", "Migration policy debate"],
+            }
+        )
+
+        prepared = preprocessor.prepare_titles_for_clustering(df)
+
+        self.assertEqual(len(prepared), 2)
+        self.assertEqual(prepared["article_id"].tolist(), ["a10", "a11"])
+        self.assertEqual(prepared["title"].tolist(), ["Migration policy debate", "Migration policy debate"])
+
+    def test_prepare_titles_for_clustering_filters_null_and_blank_titles(self):
+        preprocessor = ArticlePreprocessor()
+        df = pd.DataFrame(
+            {
+                "article_id": ["a1", "a2", "a3", "a4"],
+                "title": [None, "", "   ", "Valid headline"],
+            }
+        )
+
+        prepared = preprocessor.prepare_titles_for_clustering(df)
+
+        self.assertEqual(len(prepared), 1)
+        self.assertEqual(prepared.loc[0, "article_id"], "a4")
+        self.assertEqual(prepared.loc[0, "title"], "Valid headline")
+
+    def test_prepare_titles_for_clustering_filters_blank_processed_titles(self):
+        preprocessor = ArticlePreprocessor()
+        df = pd.DataFrame(
+            {
+                "article_id": ["a1", "a2"],
+                "title": ["the and", "Clear policy plan"],
+            }
+        )
+
+        prepared = preprocessor.prepare_titles_for_clustering(df)
+
+        self.assertEqual(len(prepared), 1)
+        self.assertEqual(prepared.loc[0, "article_id"], "a2")
+        self.assertEqual(prepared.loc[0, "title"], "Clear policy plan")
+        self.assertNotEqual(prepared.loc[0, "processed_title"].strip(), "")
 
 
 if __name__ == "__main__":
