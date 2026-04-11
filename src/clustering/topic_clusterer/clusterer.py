@@ -40,7 +40,7 @@ class TopicClusterer:
         cluster_count = min(self.n_clusters, len(working_df))
         tfidf_matrix = self.vectorizer.fit_transform(working_df["processed_title"])
         model = KMeans(n_clusters=cluster_count, random_state=self.random_state, n_init=10)
-        working_df["cluster"] = model.fit_predict(tfidf_matrix)
+        working_df["cluster_id"] = model.fit_predict(tfidf_matrix)
 
         return TopicClusteringResult(
             clustered_titles=working_df,

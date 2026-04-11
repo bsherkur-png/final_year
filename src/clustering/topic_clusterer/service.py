@@ -19,9 +19,9 @@ DEFAULT_INPUT_CANDIDATES = (
     PROJECT_ROOT / "data" / "intermediate" / "sample_extracted.csv",
     PROJECT_ROOT / "data" / "intermediate" / "news_meta_data_sample_1pct.csv",
 )
-DEFAULT_RESULTS_OUTPUT = PROJECT_ROOT / "src" / "ingestion" / "data" / "clustered_news_topics.csv"
-DEFAULT_SUMMARY_OUTPUT = PROJECT_ROOT / "src" / "ingestion" / "data" / "cluster_topic_summary.csv"
-DEFAULT_TOPIC_DATASETS_DIR = PROJECT_ROOT / "src" / "ingestion" / "data" / "topic_datasets"
+DEFAULT_RESULTS_OUTPUT = PROJECT_ROOT /"data" / "intermediate" / "clustered_news_topics.csv"
+DEFAULT_SUMMARY_OUTPUT = PROJECT_ROOT /"data" / "intermediate" / "cluster_topic_summary.csv"
+
 
 
 @dataclass
@@ -81,18 +81,23 @@ class TopicFilterService:
         }
 
         clustered_titles = clustering_result.clustered_titles.copy()
-        clustered_titles["topic_label"] = clustered_titles["cluster"].map(topic_labels)
-        metadata_columns = ["id"] + [
+        clustered_titles["topic_label"] = clustered_titles["cluster_id"].map(topic_labels)
+        source_id_column = "id" if "id" in titles_df.columns else "article_id"
+        target_id_column = "id" if "id" in clustered_titles.columns else "article_id"
+        metadata_columns = [source_id_column] + [
             column
             for column in ("url", "media_name", "news_agent", "news agent", "source")
-            if column in titles_df.columns
+            if column in titles_df.columns and column != source_id_column
         ]
         if len(metadata_columns) > 1:
             clustered_titles = clustered_titles.merge(
-                titles_df.loc[:, metadata_columns].drop_duplicates(subset=["id"]),
-                on="id",
+                titles_df.loc[:, metadata_columns].drop_duplicates(subset=[source_id_column]),
+                left_on=target_id_column,
+                right_on=source_id_column,
                 how="left",
             )
+            if source_id_column != target_id_column and source_id_column in clustered_titles.columns:
+                clustered_titles = clustered_titles.drop(columns=[source_id_column])
 
         summary = self.build_summary(
             clustered_titles,
@@ -120,7 +125,7 @@ class TopicFilterService:
         summary_rows = []
 
         for cluster_id in sorted(top_terms_by_cluster):
-            cluster_rows = clustered_titles.loc[clustered_titles["cluster"] == cluster_id]
+            cluster_rows = clustered_titles.loc[clustered_titles["cluster_id"] == cluster_id]
             cluster_titles = cluster_rows["title"].head(5).tolist()
             summary_rows.append(
                 {
@@ -138,31 +143,14 @@ class TopicFilterService:
         result: TopicFilterResult,
         results_output: Path = DEFAULT_RESULTS_OUTPUT,
         summary_output: Path = DEFAULT_SUMMARY_OUTPUT,
-        topic_datasets_dir: Path = DEFAULT_TOPIC_DATASETS_DIR,
+
     ) -> None:
         results_output.parent.mkdir(parents=True, exist_ok=True)
         result.clustered_titles.to_csv(results_output, index=False)
         result.summary.to_csv(summary_output, index=False)
-        TopicFilterService.save_topic_datasets(result.clustered_titles, topic_datasets_dir)
 
-    @staticmethod
-    def save_topic_datasets(clustered_titles: pd.DataFrame, output_dir: Path) -> None:
-        output_dir.mkdir(parents=True, exist_ok=True)
 
-        for topic_label, topic_rows in clustered_titles.groupby("topic_label", sort=True):
-            cleaned_label = str(topic_label).strip()
-            if not cleaned_label:
-                continue
 
-            file_name = f"{TopicFilterService.slugify_label(cleaned_label)}.csv"
-            topic_rows.to_csv(output_dir / file_name, index=False)
-
-    @staticmethod
-    def slugify_label(label: str) -> str:
-        slug = label.strip().lower().replace("/", " ").replace("\\", " ")
-        slug = "".join(character if character.isalnum() else "_" for character in slug)
-        slug = "_".join(part for part in slug.split("_") if part)
-        return slug or "topic_dataset"
 
 
 def main() -> None:
