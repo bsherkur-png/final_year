@@ -47,6 +47,22 @@ class WebExtractor:
         return self.parser.extract_text(html)
 
     def extract(self, df: pd.DataFrame, url_column: str = "url") -> pd.DataFrame:
+        required_input_columns = [
+            "article_id",
+            "title",
+            "publish_date",
+            "url",
+            "media_name",
+            "processed_title",
+            "cluster_id",
+            "topic_label",
+        ]
+        missing_columns = [col for col in required_input_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(
+                f"Missing required columns: {', '.join(missing_columns)}"
+            )
+
         if url_column not in df.columns:
             raise ValueError(f"Missing required column: {url_column}")
 
