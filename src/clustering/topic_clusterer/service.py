@@ -41,25 +41,7 @@ class TopicFilterService:
         self.clusterer = clusterer or TopicClusterer()
         self.preprocessor = preprocessor or ArticlePreprocessor.from_spacy_model()
 
-    @staticmethod
-    def resolve_input_path(input_candidates: Iterable[Path] = DEFAULT_INPUT_CANDIDATES) -> Path:
-        required_columns = {"id", "title"}
 
-        for path in input_candidates:
-            if not path.exists():
-                continue
-
-            sample = pd.read_csv(path, nrows=0)
-            if required_columns.issubset(sample.columns):
-                return path
-
-        raise FileNotFoundError(
-            "Could not find an input CSV with the required 'id' and 'title' columns."
-        )
-
-    @staticmethod
-    def load_news_titles(input_path: Path) -> pd.DataFrame:
-        return pd.read_csv(input_path)
 
     def run(self, titles_df: pd.DataFrame) -> TopicFilterResult:
         prepared_titles = self.preprocessor.prepare_titles_for_clustering(titles_df)
@@ -138,34 +120,8 @@ class TopicFilterService:
 
         return pd.DataFrame(summary_rows)
 
-    @staticmethod
-    def save_results(
-        result: TopicFilterResult,
-        results_output: Path = DEFAULT_RESULTS_OUTPUT,
-        summary_output: Path = DEFAULT_SUMMARY_OUTPUT,
-
-    ) -> None:
-        results_output.parent.mkdir(parents=True, exist_ok=True)
-        result.clustered_titles.to_csv(results_output, index=False)
-        result.summary.to_csv(summary_output, index=False)
 
 
 
 
 
-def main() -> None:
-    service = TopicFilterService()
-    input_path = service.resolve_input_path()
-    titles_df = service.load_news_titles(input_path)
-    result = service.run(titles_df)
-    service.save_results(result)
-
-    print(f"Loaded: {input_path}")
-    print(f"Titles clustered: {len(result.clustered_titles)}")
-    print(f"Saved results to: {DEFAULT_RESULTS_OUTPUT}")
-    print(f"Saved summary to: {DEFAULT_SUMMARY_OUTPUT}")
-    print(result.summary.to_string(index=False))
-
-
-if __name__ == "__main__":
-    main()
