@@ -46,24 +46,34 @@ class WebExtractor:
     def extract_text(self, html: str) -> str:
         return self.parser.extract_text(html)
 
-    def extract(self, df: pd.DataFrame, url_column: str = "url", text_column: str = "text") -> pd.DataFrame:
-        if url_column not in df.columns:
-            raise ValueError(f"Missing required column: {url_column}")
+def extract(self, df: pd.DataFrame, url_column: str = "url") -> pd.DataFrame:
+    if url_column not in df.columns:
+        raise ValueError(f"Missing required column: {url_column}")
 
-        extracted_df = df.copy()
-        if text_column not in extracted_df.columns:
-            extracted_df[text_column] = None
+    extracted_df = df.copy()
 
-        for idx, url in extracted_df[url_column].items():
-            try:
-                html = self.fetch_page(url)
-                extracted_df.at[idx, text_column] = self.extract_text(html)
-                time.sleep(self.delay_seconds)
-            except Exception as exc:
-                extracted_df.at[idx, text_column] = None
-                print(f"Failed at {url}: {exc}")
+    # Append required output columns
+    if "original_body_text" not in extracted_df.columns:
+        extracted_df["original_body_text"] = None
+    if "extraction_status" not in extracted_df.columns:
+        extracted_df["extraction_status"] = None
+    if "extraction_error" not in extracted_df.columns:
+        extracted_df["extraction_error"] = None
 
-        return extracted_df
+    for idx, url in extracted_df[url_column].items():
+        try:
+            html = self.fetch_page(url)
+            extracted_df.at[idx, "original_body_text"] = self.extract_text(html)
+            extracted_df.at[idx, "extraction_status"] = "success"
+            extracted_df.at[idx, "extraction_error"] = None
+            time.sleep(self.delay_seconds)
+        except Exception as exc:
+            extracted_df.at[idx, "original_body_text"] = None
+            extracted_df.at[idx, "extraction_status"] = "failed"
+            extracted_df.at[idx, "extraction_error"] = str(exc)
+            print(f"Failed at {url}: {exc}")
+
+    return extracted_df
 
 
 Extractor = WebExtractor
