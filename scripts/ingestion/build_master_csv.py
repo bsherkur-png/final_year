@@ -16,9 +16,12 @@ def get_column_name(df, possible_names):
 
 
 def normalize_dates(series):
+    raw = series.astype("string")
     parsed = pd.to_datetime(series, errors="coerce", utc=True)
     parsed = parsed.dt.tz_localize(None)
-    return parsed.dt.strftime("%d/%m/%Y")
+    has_time = raw.str.contains(r"(?:T|\s)\d{1,2}:\d{2}", na=False)
+    formatted = parsed.dt.strftime("%Y-%m-%d")
+    return formatted.where(~has_time, parsed.dt.strftime("%Y-%m-%dT%H:%M:%S"))
 
 
 def load_source_articles(input_file):
