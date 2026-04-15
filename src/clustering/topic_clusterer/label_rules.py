@@ -19,81 +19,23 @@ MANUAL_TOPIC_LABELS = {
     14: "Topic 15",
 }
 
-MIGRATION_RELEVANCE_KEYWORDS = [
-    "asylum",
-    "border",
-    "channel",
-    "deport",
-    "detention",
-    "home office",
-    "immigration",
-    "migrant",
-    "migration",
-    "net migration",
-    "refugee",
-    "rwanda",
-    "smuggling",
-    "small boat",
-    "trafficking",
-    "visa",
+INCLUSION_KEYWORDS = [
+    "rwanda", "asylum", "deport", "deportation", "migrant", "migration",
+    "scheme", "plan", "bill", "flights", "home office", "supreme court",
+    "appeal", "treaty", "small boats"
 ]
 
-TARGET_CLUSTER_CUES = {
-    "visa routes": [
-        "visa",
-        "student visa",
-        "work visa",
-        "family visa",
-        "salary threshold",
-        "income threshold",
-        "skilled worker",
-        "health and care visa",
-        "dependants",
-        "sponsorship",
-    ],
-    "boat crossings": [
-        "small boat",
-        "small boats",
-        "channel",
-        "channel crossing",
-        "boat crossing",
-        "crossing",
-        "border force",
-    ],
-    "migration figures": [
-        "net migration",
-        "figures",
-        "stats",
-        "official figures",
-        "record high",
-        "record low",
-    ],
-    "rwanda plan": [
-        "rwanda",
-        "rwanda bill",
-        "rwanda plan",
-        "rwanda scheme",
-        "safety of rwanda",
-        "flights to rwanda",
-    ],
-}
+EXCLUSION_KEYWORDS = [
+    "tourism",  "sport", "genocide memorial"
+]
 
-EXCLUDED_TITLE_CUES = [
-    "australia",
-    "biden",
-    "california",
-    "canada",
-    "canadian",
-    "congo",
-    "congress",
-    "israel",
-    "meghan",
-    "mexico",
-    "prince harry",
-    "senate",
-    "texas",
-    "trump",
-    "italy",
+ARTICLE_TYPE_EXCLUSIONS = [
+    "analysis",
+    "explainer",
+    "live",
+    "opinion",
+    "podcast",
+    "watch",
 ]
 
 
@@ -108,32 +50,53 @@ def build_cluster_labels(top_terms_by_cluster: dict[int, list[str]]) -> dict[int
 
 
 def is_migration_relevant(title: str, processed_title: str = "") -> bool:
-    title_candidates = [_normalize_rule_text(title), _normalize_rule_text(processed_title)]
+    return is_rwanda_title_relevant(title, processed_title)
 
-    for keyword in MIGRATION_RELEVANCE_KEYWORDS:
+
+def is_rwanda_title_relevant(title: str, processed_title: str = "") -> bool:
+    title_candidates = [_normalize_rule_text(title), _normalize_rule_text(processed_title)]
+    has_inclusion_match = False
+    has_policy_match = False
+
+    for keyword in INCLUSION_KEYWORDS:
         normalized_keyword = _normalize_rule_text(keyword)
         if normalized_keyword and any(_contains_keyword(candidate, normalized_keyword) for candidate in title_candidates):
-            return True
+            has_inclusion_match = True
+            if normalized_keyword in ("bill", "scheme", "asylum", "home office", "deport", "treaty"):
+                has_policy_match = True
 
-    return False
+    if not has_inclusion_match:
+        return False
+
+    for keyword in EXCLUSION_KEYWORDS:
+        normalized_keyword = _normalize_rule_text(keyword)
+        if normalized_keyword and any(_contains_keyword(candidate, normalized_keyword) for candidate in title_candidates):
+            return False
+
+    for keyword in ARTICLE_TYPE_EXCLUSIONS:
+        normalized_keyword = _normalize_rule_text(keyword)
+        if normalized_keyword and any(_contains_keyword(candidate, normalized_keyword) for candidate in title_candidates):
+            return False
+
+    if any(_contains_keyword(candidate, "kagame") for candidate in title_candidates) and not has_policy_match:
+        return False
+
+    return True
 
 
 def is_target_cluster_candidate(title: str, processed_title: str = "") -> bool:
-    title_candidates = [_normalize_rule_text(title), _normalize_rule_text(processed_title)]
-
-    for keywords in TARGET_CLUSTER_CUES.values():
-        for keyword in keywords:
-            normalized_keyword = _normalize_rule_text(keyword)
-            if normalized_keyword and any(_contains_keyword(candidate, normalized_keyword) for candidate in title_candidates):
-                return True
-
-    return False
+    return is_rwanda_title_relevant(title, processed_title)
 
 
 def is_title_in_scope(title: str, processed_title: str = "") -> bool:
     title_candidates = [_normalize_rule_text(title), _normalize_rule_text(processed_title)]
 
-    for cue in EXCLUDED_TITLE_CUES:
+    for cue in EXCLUSION_KEYWORDS:
+        normalized_cue = _normalize_rule_text(cue)
+        if normalized_cue and any(_contains_keyword(candidate, normalized_cue) for candidate in title_candidates):
+            return False
+
+    for cue in ARTICLE_TYPE_EXCLUSIONS:
         normalized_cue = _normalize_rule_text(cue)
         if normalized_cue and any(_contains_keyword(candidate, normalized_cue) for candidate in title_candidates):
             return False
