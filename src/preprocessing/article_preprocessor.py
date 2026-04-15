@@ -177,16 +177,6 @@ class ArticlePreprocessor:
         doc = self._ensure_nlp()(normalized)
         return self._extract_body_tokens(doc)
 
-    def _preprocess_text(self, text: str) -> str:
-        normalized = self._normalize_text(text)
-        if not normalized:
-            return ""
-
-        if self.nlp is None:
-            return " ".join(self.fallback_tokenizer.tokenize(normalized))
-
-        doc = self.nlp(normalized)
-        return " ".join(self._extract_lemmas(doc))
 
     @staticmethod
     def _extract_lemmas(doc) -> list[str]:

@@ -1,5 +1,5 @@
 from src.clustering.topic_clusterer.clusterer import TopicClusteringResult, TopicClusterer
-from src.clustering.topic_clusterer.service import TopicFilterResult, TopicFilterService, main
+from src.clustering.topic_clusterer.service import TopicFilterResult, TopicFilterService
 
 
 __all__ = [
@@ -7,5 +7,4 @@ __all__ = [
     "TopicClusterer",
     "TopicFilterResult",
     "TopicFilterService",
-    "main",
 ]

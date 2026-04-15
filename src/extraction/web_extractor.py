@@ -30,7 +30,7 @@ class WebExtractor:
     def __init__(
         self,
         delay_seconds: int = 5,
-        timeout_seconds: int = 15,
+        timeout_seconds: int = 3,
     ):
         self.delay_seconds = delay_seconds
         self.timeout_seconds = timeout_seconds

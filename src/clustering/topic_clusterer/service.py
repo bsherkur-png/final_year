@@ -68,7 +68,7 @@ class TopicFilterService:
         target_id_column = "id" if "id" in clustered_titles.columns else "article_id"
         metadata_columns = [source_id_column] + [
             column
-            for column in ("url", "media_name", "news_agent", "news agent", "source")
+            for column in ("publish_date", "url", "media_name", "news_agent", "news agent", "source")
             if column in titles_df.columns and column != source_id_column
         ]
         if len(metadata_columns) > 1:

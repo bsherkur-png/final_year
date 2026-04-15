@@ -1,4 +1,8 @@
-from src.clustering.topic_clusterer import TopicClusteringResult, TopicClusterer, main
+from src.clustering.topic_clusterer import (
+    TopicClusteringResult,
+    TopicClusterer,
+    TopicFilterResult,
+    TopicFilterService,
+)
 
-
-__all__ = ["TopicClusteringResult", "TopicClusterer", "main"]
+__all__ = ["TopicClusteringResult", "TopicClusterer", "TopicFilterResult", "TopicFilterService"]
