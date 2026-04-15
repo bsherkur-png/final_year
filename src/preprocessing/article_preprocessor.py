@@ -151,7 +151,7 @@ class ArticlePreprocessor:
         if id_column == "article_id" and source_id_column not in df.columns and "id" in df.columns:
             source_id_column = "id"
 
-        required_columns = {source_id_column, title_column}
+        required_columns = {source_id_column, title_column, "publish_date", "url", "media_name"}
         if not required_columns.issubset(df.columns):
             raise ValueError(
                 f"DataFrame must contain columns {sorted(required_columns)}. "
@@ -159,7 +159,7 @@ class ArticlePreprocessor:
             )
 
         titles_df = (
-            df.loc[:, [source_id_column, title_column]]
+            df.loc[:, [source_id_column, title_column, "publish_date", "url", "media_name"]]
             .rename(columns={source_id_column: "article_id", title_column: "title"})
             .dropna(subset=["title"])
             .assign(title=lambda frame: frame["title"].astype(str).str.strip())
@@ -167,7 +167,10 @@ class ArticlePreprocessor:
         titles_df = titles_df.loc[titles_df["title"] != ""].reset_index(drop=True)
         titles_df["processed_title"] = self.preprocess_titles(titles_df["title"])
         titles_df = titles_df.loc[titles_df["processed_title"].str.strip() != ""].reset_index(drop=True)
-        return titles_df.loc[:, ["article_id", "title", "processed_title"]]
+        return titles_df.loc[
+            :,
+            ["article_id", "title", "processed_title", "publish_date", "url", "media_name"],
+        ]
 
     def tokenize_body(self, body: str) -> list[str]:
         normalized = self._normalize_text(body)
