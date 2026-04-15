@@ -94,6 +94,30 @@ class LexiconScorer:
             "nrc_score": self.score_nrc(processed_text),
         }
 
+    def score_dataframe(self, dataframe):
+        """Return the input dataframe with lexicon score columns appended."""
+        try:
+            import pandas as pd
+        except ImportError as exc:
+            raise ImportError("pandas is required for score_dataframe.") from exc
+
+        if not isinstance(dataframe, pd.DataFrame):
+            raise TypeError("score_dataframe expects a pandas DataFrame.")
+
+        self._validate_dataframe_columns(dataframe)
+        scored_dataframe = dataframe.copy()
+        scored_dataframe["vader_score"] = scored_dataframe["minimal_body_text"].apply(
+            self.score_vader
+        )
+        scored_dataframe["sentiwordnet_score"] = scored_dataframe[
+            "fully_preprocessed_body_text"
+        ].apply(self.score_sentiwordnet)
+        scored_dataframe["nrc_score"] = scored_dataframe[
+            "fully_preprocessed_body_text"
+        ].apply(self.score_nrc)
+
+        return scored_dataframe
+
     def score_csv(self, input_path: str | Path):
         """Read a preprocessed CSV with pandas and return raw scores for each article."""
         try:
@@ -102,22 +126,7 @@ class LexiconScorer:
             raise ImportError("pandas is required for score_csv.") from exc
 
         dataframe = pd.read_csv(input_path)
-        self._validate_dataframe_columns(dataframe)
-        scored_rows = []
-
-        for _, row in dataframe.iterrows():
-            article_scores = self.score_article(
-                row["minimal_body_text"],
-                row["fully_preprocessed_body_text"],
-            )
-            scored_rows.append(
-                {
-                    "article_id": row["article_id"],
-                    **article_scores,
-                }
-            )
-
-        return pd.DataFrame(scored_rows)
+        return self.score_dataframe(dataframe)
 
     @staticmethod
     def _normalise_text(text: str) -> str:

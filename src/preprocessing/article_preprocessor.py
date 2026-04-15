@@ -87,6 +87,23 @@ class ArticlePreprocessor:
 
         return processed_bodies
 
+    def preprocess_article_dataframe(
+        self,
+        df: pd.DataFrame,
+        body_column: str = "original_body_text",
+    ) -> pd.DataFrame:
+        """Return a copy of df with minimal and fully preprocessed body-text columns added."""
+        if body_column not in df.columns:
+            raise ValueError(
+                f"DataFrame must contain body column '{body_column}'. Found: {list(df.columns)}"
+            )
+
+        output_df = df.copy()
+        minimal_body_texts = [self.minimal_preprocess_body(body) for body in output_df[body_column]]
+        output_df["minimal_body_text"] = minimal_body_texts
+        output_df["fully_preprocessed_body_text"] = self.preprocess_bodies(minimal_body_texts)
+        return output_df
+
     def preprocess_body_csv(
         self,
         input_path: str | Path,
@@ -95,23 +112,30 @@ class ArticlePreprocessor:
         body_column: str = "text",
     ) -> pd.DataFrame:
         df = pd.read_csv(input_path)
-        processed_rows = []
-
-        for _, row in df.iterrows():
-            original_body_text = "" if pd.isna(row[body_column]) else str(row[body_column])
-            minimal_body_text = self.minimal_preprocess_body(original_body_text)
-            fully_preprocessed_body_text = self.preprocess_body(minimal_body_text)
-
-            processed_rows.append(
-                {
-                    "article_id": row[id_column],
-                    "original_body_text": original_body_text,
-                    "minimal_body_text": minimal_body_text,
-                    "fully_preprocessed_body_text": fully_preprocessed_body_text,
-                }
+        required_columns = {id_column, body_column}
+        if not required_columns.issubset(df.columns):
+            raise ValueError(
+                f"DataFrame must contain columns {sorted(required_columns)}. "
+                f"Found: {list(df.columns)}"
             )
 
-        output_df = pd.DataFrame(processed_rows)
+        output_df = (
+            df.loc[:, [id_column, body_column]]
+            .rename(columns={id_column: "article_id", body_column: "original_body_text"})
+        )
+        output_df["original_body_text"] = output_df["original_body_text"].apply(
+            lambda body: "" if pd.isna(body) else str(body)
+        )
+        output_df = self.preprocess_article_dataframe(output_df)
+        output_df = output_df.loc[
+            :,
+            [
+                "article_id",
+                "original_body_text",
+                "minimal_body_text",
+                "fully_preprocessed_body_text",
+            ],
+        ]
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_df.to_csv(output_path, index=False)

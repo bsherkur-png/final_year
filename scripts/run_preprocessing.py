@@ -7,8 +7,8 @@ from src.preprocessing.article_preprocessor import ArticlePreprocessor
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_INPUT = PROJECT_ROOT / "data" / "intermediate" / "sample_extracted.csv"
-DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "sample_extracted_processed.csv"
+DEFAULT_INPUT = PROJECT_ROOT / "data" / "intermediate" / "articles_with_bodies.csv"
+DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "preprocessed_articles.csv"
 
 
 def parse_args():
@@ -34,7 +34,11 @@ def main():
         raise ValueError(f"Missing required column: {args.text_column}")
 
     preprocessor = ArticlePreprocessor.from_spacy_model()
-    df[args.processed_column] = preprocessor.preprocess_bodies(df[args.text_column].fillna(""))
+    processed_df = preprocessor.preprocess_article_dataframe(
+        df.loc[:, [args.text_column]].rename(columns={args.text_column: "original_body_text"}),
+        body_column="original_body_text",
+    )
+    df[args.processed_column] = processed_df["fully_preprocessed_body_text"]
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)
