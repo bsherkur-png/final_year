@@ -7,8 +7,8 @@ from src.extraction.scraper import Extractor
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_INPUT = PROJECT_ROOT / "data" / "intermediate" / "clustered_articles.cvs"
-DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "articles_with_bodies.cvs"
+DEFAULT_INPUT = PROJECT_ROOT / "data" / "intermediate" / "sample.csv"
+DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "articles_with_bodies.csv"
 
 
 def parse_args():

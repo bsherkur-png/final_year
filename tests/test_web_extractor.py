@@ -69,21 +69,36 @@ class WebExtractorTests(unittest.TestCase):
                 "https://bad.test": RuntimeError("network error"),
             }
         )
-        df = pd.DataFrame({"url": ["https://ok.test", "https://bad.test"]})
+        df = pd.DataFrame(
+            {
+                "article_id": ["a1", "a2"],
+                "news_outlet": ["BBC", "BBC"],
+                "title": ["One", "Two"],
+                "date_link": ["https://ok.test", "https://bad.test"],
+            }
+        )
 
         with patch("src.extraction.web_extractor.time.sleep") as sleep_mock, patch("builtins.print") as print_mock:
             extracted = extractor.extract(df)
 
-        self.assertEqual(extracted.loc[0, "text"], "Alpha Beta")
-        self.assertTrue(pd.isna(extracted.loc[1, "text"]))
+        self.assertEqual(list(extracted.columns), ["article_id", "news_outlet", "title", "date_link", "body"])
+        self.assertEqual(extracted.loc[0, "body"], "Alpha Beta")
+        self.assertEqual(extracted.loc[1, "body"], "")
         sleep_mock.assert_called_once_with(2)
         print_mock.assert_any_call("Failed at https://bad.test: network error")
 
     def test_extract_requires_url_column(self):
         extractor = WebExtractor()
-        df = pd.DataFrame({"link": ["https://example.com"]})
+        df = pd.DataFrame(
+            {
+                "article_id": ["a1"],
+                "news_outlet": ["BBC"],
+                "title": ["One"],
+                "link": ["https://example.com"],
+            }
+        )
 
-        with self.assertRaisesRegex(ValueError, "Missing required column: url"):
+        with self.assertRaisesRegex(ValueError, "Missing required columns: date_link"):
             extractor.extract(df)
 
 

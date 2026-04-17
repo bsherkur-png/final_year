@@ -15,7 +15,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Preprocess article body text in a CSV file.")
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT, help="Input CSV path.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="Output CSV path.")
-    parser.add_argument("--text-column", default="text", help="Column containing article body text.")
+    parser.add_argument("--text-column", default="body", help="Column containing article body text.")
     parser.add_argument(
         "--processed-column",
         default="processed_text",
@@ -34,11 +34,12 @@ def main():
         raise ValueError(f"Missing required column: {args.text_column}")
 
     preprocessor = ArticlePreprocessor.from_spacy_model()
-    processed_df = preprocessor.preprocess_article_dataframe(
-        df.loc[:, [args.text_column]].rename(columns={args.text_column: "original_body_text"}),
-        body_column="original_body_text",
+    nlp = preprocessor._ensure_nlp()
+    df[args.processed_column] = df[args.text_column].apply(
+        lambda text: ""
+        if pd.isna(text)
+        else " ".join(token.text.lower() for token in nlp(str(text).strip()) if not token.is_space)
     )
-    df[args.processed_column] = processed_df["fully_preprocessed_body_text"]
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)

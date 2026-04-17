@@ -3,9 +3,8 @@ from pathlib import Path
 import pandas as pd
 
 from scripts.ingestion.build_master_csv import build_master_csv
-from src.clustering.topic_clusterer.service import TopicFilterService
 from src.extraction.scraper import Extractor
-from src.preprocessing.article_preprocessor import ArticlePreprocessor
+from src.preprocessing.article_preprocessor import ArticlePreprocessor, ShamimaBegumFilter
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer
 
 
@@ -54,6 +53,8 @@ class NewsPipeline:
 
     def _get_cluster_service(self):
         if self.cluster_service is None:
+            from src.clustering.topic_clusterer.service import TopicFilterService
+
             self.cluster_service = TopicFilterService()
         return self.cluster_service
 
@@ -69,11 +70,11 @@ class NewsPipeline:
 
     @staticmethod
     def _resolve_body_column(df: pd.DataFrame) -> str:
-        for column in ("original_body_text", "text"):
+        for column in ("body", "original_body_text", "text"):
             if column in df.columns:
                 return column
         raise ValueError(
-            "Missing article body text column. Expected one of: original_body_text, text"
+            "Missing article body text column. Expected one of: body, original_body_text, text"
         )
 
     @staticmethod
@@ -104,9 +105,10 @@ class NewsPipeline:
         return clustering_result.clustered_titles
 
     def run_extraction(self) -> pd.DataFrame:
-        clustered_df = pd.read_csv(self.cluster_output_path)
-        clustered_df = self._ensure_article_id(clustered_df)
-        extracted_df = self._get_extractor().extract(clustered_df)
+        master_df = pd.read_csv(self.ingestion_output_path)
+        master_df = self._ensure_article_id(master_df)
+        extracted_df = self._get_extractor().extract(master_df)
+        extracted_df = ShamimaBegumFilter(self._get_preprocessor()).filter_articles(extracted_df)
         self._write_csv(extracted_df, self.extraction_output_path)
         return extracted_df
 
@@ -115,14 +117,15 @@ class NewsPipeline:
         extracted_df = self._ensure_article_id(extracted_df)
         body_column = self._resolve_body_column(extracted_df)
 
-        if body_column != "original_body_text" and "original_body_text" not in extracted_df.columns:
-            extracted_df = extracted_df.copy()
-            extracted_df["original_body_text"] = extracted_df[body_column]
-            body_column = "original_body_text"
+        preprocessed_df = extracted_df.copy()
+        preprocessed_df["original_body_text"] = preprocessed_df[body_column].apply(
+            lambda body: "" if pd.isna(body) else str(body)
+        )
+        preprocessed_df["minimal_body_text"] = preprocessed_df["original_body_text"].str.strip()
 
-        preprocessed_df = self._get_preprocessor().preprocess_article_dataframe(
-            extracted_df,
-            body_column=body_column,
+        nlp = self._get_preprocessor()._ensure_nlp()
+        preprocessed_df["fully_preprocessed_body_text"] = preprocessed_df["minimal_body_text"].apply(
+            lambda text: " ".join(token.text.lower() for token in nlp(text) if not token.is_space)
         )
         self._write_csv(preprocessed_df, self.preprocess_output_path)
         return preprocessed_df
@@ -133,9 +136,9 @@ class NewsPipeline:
         scored_df = self._get_lexicon_scorer().score_dataframe(preprocessed_df)
         final_columns = [
             "article_id",
-            "cluster_id",
-            "publish_date",
-            "media_name",
+            "news_outlet",
+            "title",
+            "date_link",
             "vader_score",
             "sentiwordnet_score",
             "nrc_score",
@@ -149,13 +152,12 @@ class NewsPipeline:
         return final_df
 
     def run(self) -> pd.DataFrame:
-        self.run_ingestion()
-        self.run_clustering()
+        # Active execution path starts from the existing master CSV and skips clustering.
         self.run_extraction()
         self.run_preprocessing()
         return self.run_raw_sentiment()
 
 
 def run_news_pipeline(source):
-    pipeline = NewsPipeline(source=source)
+    pipeline = NewsPipeline(ingestion_output=source)
     return pipeline.run()

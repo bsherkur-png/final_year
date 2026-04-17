@@ -1,10 +1,10 @@
 import argparse
 from pathlib import Path
 
-from src.pipeline.news_pipeline import DEFAULT_SOURCE, NewsPipeline
+from src.pipeline.news_pipeline import DEFAULT_INGESTION_OUTPUT, NewsPipeline
 
 
-STAGE_ORDER = ("ingestion", "clustering", "extraction", "preprocessing", "sentiment")
+STAGE_ORDER = ("extraction", "preprocessing", "sentiment")
 
 
 def parse_args():
@@ -13,8 +13,8 @@ def parse_args():
         "input",
         type=Path,
         nargs="?",
-        default=DEFAULT_SOURCE,
-        help="Raw source CSV path.",
+        default=DEFAULT_INGESTION_OUTPUT,
+        help="Existing master CSV path.",
     )
     parser.add_argument(
         "--start-stage",
@@ -36,11 +36,9 @@ def parse_args():
 
 def main():
     args = parse_args()
-    pipeline = NewsPipeline(source=args.input)
+    pipeline = NewsPipeline(ingestion_output=args.input)
 
     stage_runners = {
-        "ingestion": (pipeline.run_ingestion, pipeline.ingestion_output_path),
-        "clustering": (pipeline.run_clustering, pipeline.cluster_output_path),
         "extraction": (pipeline.run_extraction, pipeline.extraction_output_path),
         "preprocessing": (pipeline.run_preprocessing, pipeline.preprocess_output_path),
         "sentiment": (pipeline.run_raw_sentiment, pipeline.raw_sentiment_output_path),

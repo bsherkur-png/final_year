@@ -2,7 +2,10 @@ import time
 
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 
 
 DEFAULT_USER_AGENT = (
@@ -14,6 +17,9 @@ DEFAULT_USER_AGENT = (
 
 class ArticleHtmlParser:
     def extract_text(self, html: str) -> str:
+        if BeautifulSoup is None:
+            return self._extract_text_fallback(html)
+
         soup = BeautifulSoup(html, "html.parser")
         container = soup.find(class_="main v-sep") or soup.find("article")
 
@@ -25,12 +31,23 @@ class ArticleHtmlParser:
         texts = [paragraph.get_text(" ", strip=True) for paragraph in paragraphs]
         return " ".join(texts)
 
+    @staticmethod
+    def _extract_text_fallback(html: str) -> str:
+        import re
+
+        article_match = re.search(r"<article\b[^>]*>(.*?)</article>", html, flags=re.IGNORECASE | re.DOTALL)
+        source_html = article_match.group(1) if article_match else html
+        matches = re.findall(r"<p[^>]*>(.*?)</p>", source_html, flags=re.IGNORECASE | re.DOTALL)
+        cleaned = [re.sub(r"<[^>]+>", " ", match) for match in matches]
+        cleaned = [re.sub(r"\s+", " ", text).strip() for text in cleaned]
+        return " ".join(text for text in cleaned if text)
+
 
 class WebExtractor:
     def __init__(
         self,
         delay_seconds: int = 5,
-        timeout_seconds: int = 3,
+        timeout_seconds: int = 5,
     ):
         self.delay_seconds = delay_seconds
         self.timeout_seconds = timeout_seconds
@@ -41,55 +58,52 @@ class WebExtractor:
     def fetch_page(self, url: str) -> str:
         response = self.session.get(url, timeout=self.timeout_seconds)
         response.raise_for_status()
-        return response.text
+        response.encoding = 'utf-8'
+        return response.content
 
     def extract_text(self, html: str) -> str:
         return self.parser.extract_text(html)
 
-    def extract(self, df: pd.DataFrame, url_column: str = "url") -> pd.DataFrame:
+    def extract(self, df: pd.DataFrame, url_column: str = "date_link") -> pd.DataFrame:
         required_input_columns = [
             "article_id",
+            "news_outlet",
             "title",
-            "publish_date",
-            "url",
-            "media_name",
-            "processed_title",
-            "cluster_id",
-            "topic_label",
+            "date_link",
         ]
-        missing_columns = [col for col in required_input_columns if col not in df.columns]
+        missing_columns = [column for column in required_input_columns if column not in df.columns]
         if missing_columns:
-            raise ValueError(
-                f"Missing required columns: {', '.join(missing_columns)}"
-            )
+            raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
 
         if url_column not in df.columns:
             raise ValueError(f"Missing required column: {url_column}")
 
         extracted_df = df.copy()
+        if "body" not in extracted_df.columns:
+            extracted_df["body"] = ""
+        extracted_df["body"] = extracted_df["body"].apply(
+            lambda value: "" if pd.isna(value) else str(value)
+        )
 
-        # Append required output columns
-        if "original_body_text" not in extracted_df.columns:
-            extracted_df["original_body_text"] = None
-        if "extraction_status" not in extracted_df.columns:
-            extracted_df["extraction_status"] = None
-        if "extraction_error" not in extracted_df.columns:
-            extracted_df["extraction_error"] = None
+        extracted_df = extracted_df.loc[
+            :,
+            ["article_id", "news_outlet", "title", "date_link", "body"],
+        ]
+        extracted_df = extracted_df.set_index("article_id", drop=False)
 
-        for idx, url in extracted_df[url_column].items():
+        for article_id, url in extracted_df[url_column].items():
             try:
                 html = self.fetch_page(url)
-                extracted_df.at[idx, "original_body_text"] = self.extract_text(html)
-                extracted_df.at[idx, "extraction_status"] = "success"
-                extracted_df.at[idx, "extraction_error"] = None
+                extracted_df.at[article_id, "body"] = self.extract_text(html)
                 time.sleep(self.delay_seconds)
             except Exception as exc:
-                extracted_df.at[idx, "original_body_text"] = None
-                extracted_df.at[idx, "extraction_status"] = "failed"
-                extracted_df.at[idx, "extraction_error"] = str(exc)
+                extracted_df.at[article_id, "body"] = ""
                 print(f"Failed at {url}: {exc}")
 
-        return extracted_df
+        return extracted_df.reset_index(drop=True).loc[
+            :,
+            ["article_id", "news_outlet", "title", "date_link", "body"],
+        ]
 
 
 Extractor = WebExtractor

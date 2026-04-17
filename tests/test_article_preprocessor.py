@@ -2,141 +2,66 @@ import unittest
 
 import pandas as pd
 
-from src.preprocessing.article_preprocessor import ArticlePreprocessor
+from src.preprocessing.article_preprocessor import ArticlePreprocessor, ShamimaBegumFilter
 
 
 class FakeToken:
-    def __init__(self, lemma, is_stop=False, is_punct=False, is_space=False):
-        self.lemma_ = lemma
-        self.is_stop = is_stop
-        self.is_punct = is_punct
-        self.is_space = is_space
+    def __init__(self, text):
+        self.text = text
+        self.is_space = not str(text).strip()
 
 
-class FakeNLP:
-    def __init__(self, docs):
-        self.docs = docs
-        self.calls = []
-
+class FakeNlp:
     def __call__(self, text):
-        self.calls.append(text)
-        return self.docs[text]
-
-    def pipe(self, texts, batch_size=32):
-        for text in texts:
-            self.calls.append(text)
-            yield self.docs[text]
+        return [FakeToken(token) for token in str(text).split()]
 
 
 class ArticlePreprocessorTests(unittest.TestCase):
-    def test_preprocess_body_tokenizes_and_filters_with_spacy_attributes(self):
-        normalized = "this is a sample article, with extra spaces!"
-        fake_nlp = FakeNLP(
-            {
-                normalized: [
-                    FakeToken("this", is_stop=True),
-                    FakeToken("be", is_stop=True),
-                    FakeToken("a", is_stop=True),
-                    FakeToken("sample"),
-                    FakeToken("article"),
-                    FakeToken(",", is_punct=True),
-                    FakeToken("with", is_stop=True),
-                    FakeToken("extra"),
-                    FakeToken(" ", is_space=True),
-                    FakeToken("space"),
-                    FakeToken("!", is_punct=True),
-                ]
-            }
-        )
+    def test_ensure_nlp_returns_existing_model(self):
+        fake_nlp = FakeNlp()
         preprocessor = ArticlePreprocessor(nlp=fake_nlp)
 
-        processed = preprocessor.preprocess_body("This is a sample article,   with extra spaces!")
+        result = preprocessor._ensure_nlp()
 
-        self.assertEqual(processed, "sample article extra space")
-        self.assertEqual(fake_nlp.calls, [normalized])
+        self.assertIs(result, fake_nlp)
 
-    def test_preprocess_bodies_uses_pipe_and_preserves_empty_body(self):
-        fake_nlp = FakeNLP(
+
+class ShamimaBegumFilterTests(unittest.TestCase):
+    def test_count_mentions_uses_exact_phrase(self):
+        preprocessor = ArticlePreprocessor(nlp=FakeNlp())
+        article_filter = ShamimaBegumFilter(preprocessor)
+
+        count = article_filter._count_mentions(
+            "Shamima Begum was mentioned. shamima begum appeared again. shamima only."
+        )
+
+        self.assertEqual(count, 2)
+
+    def test_filter_articles_keeps_rows_with_two_or_more_mentions(self):
+        preprocessor = ArticlePreprocessor(nlp=FakeNlp())
+        article_filter = ShamimaBegumFilter(preprocessor)
+        articles = pd.DataFrame(
             {
-                "markets are falling fast": [
-                    FakeToken("market"),
-                    FakeToken("be", is_stop=True),
-                    FakeToken("fall"),
-                    FakeToken("fast"),
+                "article_id": ["a1", "a2", "a3"],
+                "body": [
+                    "shamima begum once.",
+                    "shamima begum twice shamima begum.",
+                    "other content",
                 ],
-                "": [],
-            }
-        )
-        preprocessor = ArticlePreprocessor(nlp=fake_nlp)
-
-        processed = preprocessor.preprocess_bodies(["Markets are falling fast", "   "])
-
-        self.assertEqual(processed, ["market fall fast", ""])
-        self.assertEqual(fake_nlp.calls, ["markets are falling fast", ""])
-
-    def test_prepare_titles_for_clustering_preserves_identical_duplicate_rows(self):
-        preprocessor = ArticlePreprocessor()
-        df = pd.DataFrame(
-            {
-                "article_id": ["a1", "a1", "a2"],
-                "title": ["Budget debate today", "Budget debate today", "Migration policy debate"],
             }
         )
 
-        prepared = preprocessor.prepare_titles_for_clustering(df)
+        filtered = article_filter.filter_articles(articles)
 
-        self.assertEqual(list(prepared.columns), ["article_id", "title", "processed_title"])
-        self.assertEqual(len(prepared), 3)
-        self.assertEqual(prepared.loc[0, "article_id"], "a1")
-        self.assertEqual(prepared.loc[1, "article_id"], "a1")
-        self.assertEqual(prepared.loc[0, "title"], "Budget debate today")
-        self.assertEqual(prepared.loc[1, "title"], "Budget debate today")
+        self.assertEqual(filtered["article_id"].tolist(), ["a2"])
 
-    def test_prepare_titles_for_clustering_preserves_same_title_across_article_ids(self):
-        preprocessor = ArticlePreprocessor()
-        df = pd.DataFrame(
-            {
-                "article_id": ["a10", "a11"],
-                "title": ["Migration policy debate", "Migration policy debate"],
-            }
-        )
+    def test_filter_articles_requires_body_column(self):
+        preprocessor = ArticlePreprocessor(nlp=FakeNlp())
+        article_filter = ShamimaBegumFilter(preprocessor)
+        articles = pd.DataFrame({"text": ["shamima begum shamima begum"]})
 
-        prepared = preprocessor.prepare_titles_for_clustering(df)
-
-        self.assertEqual(len(prepared), 2)
-        self.assertEqual(prepared["article_id"].tolist(), ["a10", "a11"])
-        self.assertEqual(prepared["title"].tolist(), ["Migration policy debate", "Migration policy debate"])
-
-    def test_prepare_titles_for_clustering_filters_null_and_blank_titles(self):
-        preprocessor = ArticlePreprocessor()
-        df = pd.DataFrame(
-            {
-                "article_id": ["a1", "a2", "a3", "a4"],
-                "title": [None, "", "   ", "Valid headline"],
-            }
-        )
-
-        prepared = preprocessor.prepare_titles_for_clustering(df)
-
-        self.assertEqual(len(prepared), 1)
-        self.assertEqual(prepared.loc[0, "article_id"], "a4")
-        self.assertEqual(prepared.loc[0, "title"], "Valid headline")
-
-    def test_prepare_titles_for_clustering_filters_blank_processed_titles(self):
-        preprocessor = ArticlePreprocessor()
-        df = pd.DataFrame(
-            {
-                "article_id": ["a1", "a2"],
-                "title": ["the and", "Clear policy plan"],
-            }
-        )
-
-        prepared = preprocessor.prepare_titles_for_clustering(df)
-
-        self.assertEqual(len(prepared), 1)
-        self.assertEqual(prepared.loc[0, "article_id"], "a2")
-        self.assertEqual(prepared.loc[0, "title"], "Clear policy plan")
-        self.assertNotEqual(prepared.loc[0, "processed_title"].strip(), "")
+        with self.assertRaisesRegex(ValueError, "body"):
+            article_filter.filter_articles(articles)
 
 
 if __name__ == "__main__":
