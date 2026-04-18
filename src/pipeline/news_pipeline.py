@@ -5,13 +5,6 @@ import pandas as pd
 from scripts.ingestion.build_master_csv import build_master_csv
 from src.comparison.outlet_comparator import OutletComparator
 from src.extraction.scraper import Extractor
-from src.pipeline.stage_services import (
-    ExtractionStageService,
-    FilteringStageService,
-    OutletComparisonStageService,
-    PreprocessingStageService,
-    SentimentStageService,
-)
 from src.preprocessing.article_preprocessor import ArticlePreprocessor, ShamimaBegumFilter
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer
 
@@ -47,11 +40,6 @@ class NewsPipeline:
         preprocessor=None,
         lexicon_scorer=None,
         outlet_comparator=None,
-        extraction_stage_service=None,
-        filtering_stage_service=None,
-        preprocessing_stage_service=None,
-        sentiment_stage_service=None,
-        outlet_comparison_stage_service=None,
     ):
         self.source_path = Path(source)
         self.ingestion_output_path = Path(ingestion_output)
@@ -74,68 +62,6 @@ class NewsPipeline:
         self.preprocessor = preprocessor
         self.lexicon_scorer = lexicon_scorer
         self.outlet_comparator = outlet_comparator
-        self.extraction_stage_service = extraction_stage_service
-        self.filtering_stage_service = filtering_stage_service
-        self.preprocessing_stage_service = preprocessing_stage_service
-        self.sentiment_stage_service = sentiment_stage_service
-        self.outlet_comparison_stage_service = outlet_comparison_stage_service
-
-    def _get_extractor(self):
-        if self.extractor is None:
-            self.extractor = Extractor()
-        return self.extractor
-
-    def _get_cluster_service(self):
-        if self.cluster_service is None:
-            from src.clustering.topic_clusterer.service import TopicFilterService
-
-            self.cluster_service = TopicFilterService()
-        return self.cluster_service
-
-    def _get_preprocessor(self):
-        if self.preprocessor is None:
-            self.preprocessor = ArticlePreprocessor.from_spacy_model()
-        return self.preprocessor
-
-    def _get_lexicon_scorer(self):
-        if self.lexicon_scorer is None:
-            self.lexicon_scorer = LexiconScorer()
-        return self.lexicon_scorer
-
-    def _get_outlet_comparator(self):
-        if self.outlet_comparator is None:
-            self.outlet_comparator = OutletComparator()
-        return self.outlet_comparator
-
-    def _get_extraction_stage_service(self):
-        if self.extraction_stage_service is None:
-            self.extraction_stage_service = ExtractionStageService(self._get_extractor())
-        return self.extraction_stage_service
-
-    def _get_filtering_stage_service(self):
-        if self.filtering_stage_service is None:
-            self.filtering_stage_service = FilteringStageService(
-                ShamimaBegumFilter(self._get_preprocessor())
-            )
-        return self.filtering_stage_service
-
-    def _get_preprocessing_stage_service(self):
-        if self.preprocessing_stage_service is None:
-            self.preprocessing_stage_service = PreprocessingStageService(self._get_preprocessor())
-        return self.preprocessing_stage_service
-
-    def _get_sentiment_stage_service(self):
-        if self.sentiment_stage_service is None:
-            self.sentiment_stage_service = SentimentStageService(self._get_lexicon_scorer())
-        return self.sentiment_stage_service
-
-    def _get_outlet_comparison_stage_service(self):
-        if self.outlet_comparison_stage_service is None:
-            self.outlet_comparison_stage_service = OutletComparisonStageService(
-                self._get_outlet_comparator(),
-                polarity_column="vader_score",
-            )
-        return self.outlet_comparison_stage_service
 
     @staticmethod
     def _write_csv(df: pd.DataFrame, output_path: Path) -> None:
@@ -151,40 +77,90 @@ class NewsPipeline:
 
     def run_clustering(self) -> pd.DataFrame:
         ingested_df = pd.read_csv(self.ingestion_output_path)
-        clustering_result = self._get_cluster_service().run(ingested_df)
+        if self.cluster_service is None:
+            from src.clustering.topic_clusterer.service import TopicFilterService
+
+            self.cluster_service = TopicFilterService()
+        clustering_result = self.cluster_service.run(ingested_df)
         self._write_csv(clustering_result.clustered_titles, self.cluster_output_path)
         self._write_csv(clustering_result.summary, self.cluster_summary_output_path)
         return clustering_result.clustered_titles
 
     def run_extraction(self) -> pd.DataFrame:
-        return self._get_extraction_stage_service().run(
-            self.ingestion_output_path,
-            self.extraction_raw_output_path,
-        )
+        master_df = pd.read_csv(self.ingestion_output_path)
+        master_df = self._ensure_article_id(master_df)
+
+        if self.extractor is None:
+            self.extractor = Extractor()
+        extracted_df = self.extractor.extract(master_df)
+
+        self._write_csv(extracted_df, self.extraction_raw_output_path)
+        return extracted_df
 
     def run_filtering(self) -> pd.DataFrame:
-        return self._get_filtering_stage_service().run(
-            self.extraction_raw_output_path,
-            self.extraction_output_path,
-        )
+        extracted_df = pd.read_csv(self.extraction_raw_output_path)
+        extracted_df = self._ensure_article_id(extracted_df)
+
+        if self.preprocessor is None:
+            self.preprocessor = ArticlePreprocessor.from_spacy_model()
+        filtered_df = ShamimaBegumFilter(self.preprocessor).filter_articles(extracted_df)
+
+        self._write_csv(filtered_df, self.extraction_output_path)
+        return filtered_df
 
     def run_preprocessing(self) -> pd.DataFrame:
-        return self._get_preprocessing_stage_service().run(
-            self.extraction_output_path,
-            self.preprocess_output_path,
+        extracted_df = pd.read_csv(self.extraction_output_path)
+        extracted_df = self._ensure_article_id(extracted_df)
+        body_column = self._resolve_body_column(extracted_df)
+
+        if self.preprocessor is None:
+            self.preprocessor = ArticlePreprocessor.from_spacy_model()
+        preprocessed_df = self.preprocessor.preprocess_dataframe(
+            extracted_df,
+            body_column=body_column,
         )
+
+        self._write_csv(preprocessed_df, self.preprocess_output_path)
+        return preprocessed_df
 
     def run_raw_sentiment(self) -> pd.DataFrame:
-        return self._get_sentiment_stage_service().run(
-            self.preprocess_output_path,
-            self.raw_sentiment_output_path,
-        )
+        preprocessed_df = pd.read_csv(self.preprocess_output_path)
+        preprocessed_df = self._ensure_article_id(preprocessed_df)
+
+        if self.lexicon_scorer is None:
+            self.lexicon_scorer = LexiconScorer()
+        scored_df = self.lexicon_scorer.score_dataframe(preprocessed_df)
+
+        final_columns = [
+            "article_id",
+            "news_outlet",
+            "title",
+            "date_link",
+            "vader_score",
+            "sentiwordnet_score",
+            "nrc_score",
+        ]
+        missing_columns = [column for column in final_columns if column not in scored_df.columns]
+        if missing_columns:
+            raise ValueError(f"Missing required final sentiment columns: {missing_columns}")
+
+        final_df = scored_df.loc[:, final_columns]
+        self._write_csv(final_df, self.raw_sentiment_output_path)
+        return final_df
 
     def run_outlet_comparison(self) -> pd.DataFrame:
-        return self._get_outlet_comparison_stage_service().run(
-            self.raw_sentiment_output_path,
-            self.outlet_comparison_output_path,
+        sentiment_df = pd.read_csv(self.raw_sentiment_output_path)
+        sentiment_df = self._ensure_article_id(sentiment_df)
+
+        if self.outlet_comparator is None:
+            self.outlet_comparator = OutletComparator()
+        summary_df = self.outlet_comparator.summarize_outlets(
+            sentiment_df,
+            polarity_column="vader_score",
         )
+
+        self._write_csv(summary_df, self.outlet_comparison_output_path)
+        return summary_df
 
     def run(self) -> pd.DataFrame:
         # Active execution path starts from the existing master CSV and skips clustering.
@@ -195,7 +171,6 @@ class NewsPipeline:
         self.run_outlet_comparison()
         return sentiment_df
 
-#new
 def run_news_pipeline(source):
     pipeline = NewsPipeline(ingestion_output=source)
     return pipeline.run()
