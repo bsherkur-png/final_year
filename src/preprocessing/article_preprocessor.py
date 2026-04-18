@@ -4,33 +4,15 @@ import pandas as pd
 
 
 class ArticlePreprocessor:
-    DEFAULT_SPACY_MODEL = "en_core_web_sm"
-    DEFAULT_SPACY_DISABLE = ["ner"]
-
     def __init__(self, nlp=None):
         self.nlp = nlp
 
-    @classmethod
-    def from_spacy_model(cls, model_name: str = DEFAULT_SPACY_MODEL, disable=None):
-        nlp = cls._load_spacy_model(model_name=model_name, disable=disable)
-        return cls(nlp=nlp)
-
     def _ensure_nlp(self):
         if self.nlp is None:
-            self.nlp = self._load_spacy_model()
+            import spacy
+
+            self.nlp = spacy.load("en_core_web_sm", disable=["ner"])
         return self.nlp
-
-    @classmethod
-    def _load_spacy_model(cls, model_name: str = DEFAULT_SPACY_MODEL, disable=None):
-        import spacy
-
-        try:
-            return spacy.load(model_name, disable=disable or cls.DEFAULT_SPACY_DISABLE)
-        except OSError as exc:
-            raise OSError(
-                f"spaCy model '{model_name}' is required. "
-                "Install it with: python -m spacy download en_core_web_sm"
-            ) from exc
 
     def preprocess_dataframe(
         self,

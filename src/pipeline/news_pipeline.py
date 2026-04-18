@@ -95,7 +95,7 @@ class NewsPipeline:
         extracted_df = self._ensure_article_id(extracted_df)
         body_column = self._resolve_body_column(extracted_df)
 
-        preprocessed_df = ArticlePreprocessor.from_spacy_model().preprocess_dataframe(
+        preprocessed_df = ArticlePreprocessor().preprocess_dataframe(
             extracted_df,
             body_column=body_column,
         )
