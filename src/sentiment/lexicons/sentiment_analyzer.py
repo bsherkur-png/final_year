@@ -1,50 +1,19 @@
 import re
-from pathlib import Path
+
+import pandas as pd
 
 
 class LexiconScorer:
     """Calculate raw lexicon scores for one article."""
 
     def __init__(self):
-        """Load the resources needed for VADER, SentiWordNet, and NRC."""
-        try:
-            from nltk.sentiment import SentimentIntensityAnalyzer
+        from nltk.sentiment import SentimentIntensityAnalyzer
+        from nltk.corpus import sentiwordnet as swn
+        from nltk.corpus import wordnet as wn
 
-            self.vader = SentimentIntensityAnalyzer()
-        except ImportError as exc:
-            raise ImportError(
-                "NLTK is required for VADER scoring."
-            ) from exc
-        except LookupError as exc:
-            raise LookupError(
-                "The NLTK VADER lexicon is required. "
-                "Install it with: python -m nltk.downloader vader_lexicon"
-            ) from exc
-
-        try:
-            from nltk.corpus import sentiwordnet as swn
-            from nltk.corpus import wordnet as wn
-
-            wn.synsets("good")
-            swn.senti_synset("good.a.01")
-            self.wordnet = wn
-            self.sentiwordnet = swn
-        except ImportError as exc:
-            raise ImportError("NLTK is required for SentiWordNet scoring.") from exc
-        except LookupError as exc:
-            raise LookupError(
-                "The NLTK wordnet and sentiwordnet resources are required. "
-                "Install them with: python -m nltk.downloader wordnet sentiwordnet"
-            ) from exc
-
-        try:
-            from nrclex import NRCLex
-
-            self.nrclex = NRCLex()
-        except ImportError as exc:
-            raise ImportError(
-                "The nrclex package is required for NRC scoring."
-            ) from exc
+        self.vader = SentimentIntensityAnalyzer()
+        self.wordnet = wn
+        self.sentiwordnet = swn
 
     def score_vader(self, text: str) -> float:
         """Return a raw VADER score for minimally preprocessed text."""
@@ -75,12 +44,15 @@ class LexiconScorer:
 
     def score_nrc(self, text: str) -> float:
         """Return NRC raw sentiment as positive token count minus negative token count."""
+        from nrclex import NRCLex
+
         tokens = self._tokenize(text)
         if not tokens:
             return 0.0
 
-        self.nrclex.load_token_list(tokens)
-        emotion_scores = self.nrclex.raw_emotion_scores
+        nrclex = NRCLex()
+        nrclex.load_token_list(tokens)
+        emotion_scores = nrclex.raw_emotion_scores
         positive_count = emotion_scores.get("positive", 0)
         negative_count = emotion_scores.get("negative", 0)
 
@@ -96,11 +68,6 @@ class LexiconScorer:
 
     def score_dataframe(self, dataframe):
         """Return the input dataframe with lexicon score columns appended."""
-        try:
-            import pandas as pd
-        except ImportError as exc:
-            raise ImportError("pandas is required for score_dataframe.") from exc
-
         if not isinstance(dataframe, pd.DataFrame):
             raise TypeError("score_dataframe expects a pandas DataFrame.")
 
@@ -117,16 +84,6 @@ class LexiconScorer:
         ].apply(self.score_nrc)
 
         return scored_dataframe
-
-    def score_csv(self, input_path: str | Path):
-        """Read a preprocessed CSV with pandas and return raw scores for each article."""
-        try:
-            import pandas as pd
-        except ImportError as exc:
-            raise ImportError("pandas is required for score_csv.") from exc
-
-        dataframe = pd.read_csv(input_path)
-        return self.score_dataframe(dataframe)
 
     @staticmethod
     def _normalise_text(text: str) -> str:
