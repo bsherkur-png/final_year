@@ -25,6 +25,41 @@ class ArticlePreprocessorTests(unittest.TestCase):
 
         self.assertIs(result, fake_nlp)
 
+    def test_preprocess_dataframe_creates_expected_columns(self):
+        preprocessor = ArticlePreprocessor(nlp=FakeNlp())
+        dataframe = pd.DataFrame(
+            {
+                "article_id": ["a1", "a2"],
+                "body": ["  Hello   World  ", None],
+            }
+        )
+
+        result = preprocessor.preprocess_dataframe(dataframe, body_column="body")
+
+        self.assertEqual(
+            list(result.columns),
+            ["article_id", "body", "original_body_text", "minimal_body_text", "fully_preprocessed_body_text"],
+        )
+        self.assertEqual(result["original_body_text"].tolist(), ["  Hello   World  ", ""])
+        self.assertEqual(result["minimal_body_text"].tolist(), ["Hello   World", ""])
+        self.assertEqual(result["fully_preprocessed_body_text"].tolist(), ["hello world", ""])
+
+    def test_preprocess_dataframe_uses_original_body_text_by_default(self):
+        preprocessor = ArticlePreprocessor(nlp=FakeNlp())
+        dataframe = pd.DataFrame({"original_body_text": ["  Mixed CASE  "]})
+
+        result = preprocessor.preprocess_dataframe(dataframe)
+
+        self.assertEqual(result["minimal_body_text"].tolist(), ["Mixed CASE"])
+        self.assertEqual(result["fully_preprocessed_body_text"].tolist(), ["mixed case"])
+
+    def test_preprocess_dataframe_requires_body_column(self):
+        preprocessor = ArticlePreprocessor(nlp=FakeNlp())
+        dataframe = pd.DataFrame({"text": ["hello world"]})
+
+        with self.assertRaisesRegex(ValueError, "Missing required column: body"):
+            preprocessor.preprocess_dataframe(dataframe, body_column="body")
+
 
 class ShamimaBegumFilterTests(unittest.TestCase):
     def test_count_mentions_uses_exact_phrase(self):

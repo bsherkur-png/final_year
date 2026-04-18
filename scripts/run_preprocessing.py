@@ -30,20 +30,17 @@ def main():
     output_path = args.output.resolve()
 
     df = pd.read_csv(input_path)
-    if args.text_column not in df.columns:
-        raise ValueError(f"Missing required column: {args.text_column}")
-
     preprocessor = ArticlePreprocessor.from_spacy_model()
-    nlp = preprocessor._ensure_nlp()
-    df[args.processed_column] = df[args.text_column].apply(
-        lambda text: ""
-        if pd.isna(text)
-        else " ".join(token.text.lower() for token in nlp(str(text).strip()) if not token.is_space)
+    preprocessed_df = preprocessor.preprocess_dataframe(
+        df,
+        body_column=args.text_column,
     )
+    if args.processed_column != "fully_preprocessed_body_text":
+        preprocessed_df[args.processed_column] = preprocessed_df["fully_preprocessed_body_text"]
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(output_path, index=False)
-    print(f"Saved {len(df)} rows to {output_path}")
+    preprocessed_df.to_csv(output_path, index=False)
+    print(f"Saved {len(preprocessed_df)} rows to {output_path}")
 
 
 if __name__ == "__main__":

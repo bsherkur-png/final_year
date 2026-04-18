@@ -4,7 +4,7 @@ from pathlib import Path
 from src.pipeline.news_pipeline import DEFAULT_INGESTION_OUTPUT, NewsPipeline
 
 
-STAGE_ORDER = ("extraction", "preprocessing", "sentiment")
+STAGE_ORDER = ("extraction", "filtering", "preprocessing", "sentiment", "outlet_comparison")
 
 
 def parse_args():
@@ -39,9 +39,14 @@ def main():
     pipeline = NewsPipeline(ingestion_output=args.input)
 
     stage_runners = {
-        "extraction": (pipeline.run_extraction, pipeline.extraction_output_path),
+        "extraction": (pipeline.run_extraction, pipeline.extraction_raw_output_path),
+        "filtering": (pipeline.run_filtering, pipeline.extraction_output_path),
         "preprocessing": (pipeline.run_preprocessing, pipeline.preprocess_output_path),
         "sentiment": (pipeline.run_raw_sentiment, pipeline.raw_sentiment_output_path),
+        "outlet_comparison": (
+            pipeline.run_outlet_comparison,
+            pipeline.outlet_comparison_output_path,
+        ),
     }
 
     start_idx = STAGE_ORDER.index(args.start_stage)

@@ -1,7 +1,4 @@
-
-from dataclasses import dataclass
 import re
-from typing import Sequence
 
 import pandas as pd
 
@@ -34,6 +31,26 @@ class ArticlePreprocessor:
                 f"spaCy model '{model_name}' is required. "
                 "Install it with: python -m spacy download en_core_web_sm"
             ) from exc
+
+    def preprocess_dataframe(
+        self,
+        dataframe: pd.DataFrame,
+        body_column: str = "original_body_text",
+    ) -> pd.DataFrame:
+        if body_column not in dataframe.columns:
+            raise ValueError(f"Missing required column: {body_column}")
+
+        preprocessed_df = dataframe.copy()
+        preprocessed_df["original_body_text"] = preprocessed_df[body_column].apply(
+            lambda body: "" if pd.isna(body) else str(body)
+        )
+        preprocessed_df["minimal_body_text"] = preprocessed_df["original_body_text"].str.strip()
+
+        nlp = self._ensure_nlp()
+        preprocessed_df["fully_preprocessed_body_text"] = preprocessed_df["minimal_body_text"].apply(
+            lambda text: " ".join(token.text.lower() for token in nlp(text) if not token.is_space)
+        )
+        return preprocessed_df
 
 
 class ShamimaBegumFilter:
