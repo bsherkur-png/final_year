@@ -47,5 +47,9 @@ Thumbs.db
 data/intermediate/
 !data/intermediate/.gitkeep
 data/combined_news.csv
-src/ingestion/data/clustered_news_topics.csv
-src/ingestion/data/cluster_topic_summary.csv
+
+# Local scratch and ad-hoc test artifacts
+tests/*.csv
+tests/print.py
+tests/Slay.py
+tests/test.py
