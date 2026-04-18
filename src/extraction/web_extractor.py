@@ -22,32 +22,31 @@ DEFAULT_BROWSER_HEADERS = {
 }
 
 
-class ArticleHtmlParser:
-    def extract_text(self, html: str) -> str:
-        if BeautifulSoup is None:
-            return self._extract_text_fallback(html)
+def _extract_text_fallback(html: str) -> str:
+    import re
 
-        soup = BeautifulSoup(html, "html.parser")
-        container = soup.find(class_="main v-sep") or soup.find("article")
+    article_match = re.search(r"<article\b[^>]*>(.*?)</article>", html, flags=re.IGNORECASE | re.DOTALL)
+    source_html = article_match.group(1) if article_match else html
+    matches = re.findall(r"<p[^>]*>(.*?)</p>", source_html, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = [re.sub(r"<[^>]+>", " ", match) for match in matches]
+    cleaned = [re.sub(r"\s+", " ", text).strip() for text in cleaned]
+    return " ".join(text for text in cleaned if text)
 
-        if container:
-            paragraphs = container.find_all("p")
-        else:
-            paragraphs = soup.find_all("p")
 
-        texts = [paragraph.get_text(" ", strip=True) for paragraph in paragraphs]
-        return " ".join(texts)
+def extract_article_text(html: str) -> str:
+    if BeautifulSoup is None:
+        return _extract_text_fallback(html)
 
-    @staticmethod
-    def _extract_text_fallback(html: str) -> str:
-        import re
+    soup = BeautifulSoup(html, "html.parser")
+    container = soup.find(class_="main v-sep") or soup.find("article")
 
-        article_match = re.search(r"<article\b[^>]*>(.*?)</article>", html, flags=re.IGNORECASE | re.DOTALL)
-        source_html = article_match.group(1) if article_match else html
-        matches = re.findall(r"<p[^>]*>(.*?)</p>", source_html, flags=re.IGNORECASE | re.DOTALL)
-        cleaned = [re.sub(r"<[^>]+>", " ", match) for match in matches]
-        cleaned = [re.sub(r"\s+", " ", text).strip() for text in cleaned]
-        return " ".join(text for text in cleaned if text)
+    if container:
+        paragraphs = container.find_all("p")
+    else:
+        paragraphs = soup.find_all("p")
+
+    texts = [paragraph.get_text(" ", strip=True) for paragraph in paragraphs]
+    return " ".join(texts)
 
 
 class WebExtractor:
@@ -59,7 +58,6 @@ class WebExtractor:
         self.delay_seconds = delay_seconds
         self.timeout_seconds = timeout_seconds
         self.session = requests.Session()
-        self.parser = ArticleHtmlParser()
         self.session.headers.update(DEFAULT_BROWSER_HEADERS)
 
     def fetch_page(self, url: str) -> str:
@@ -67,9 +65,6 @@ class WebExtractor:
         response.raise_for_status()
         response.encoding = response.encoding or response.apparent_encoding or "utf-8"
         return response.text
-
-    def extract_text(self, html: str) -> str:
-        return self.parser.extract_text(html)
 
     def extract(self, df: pd.DataFrame, url_column: str = "date_link") -> pd.DataFrame:
         required_input_columns = [
@@ -103,7 +98,7 @@ class WebExtractor:
         for article_id, url in extracted_df[url_column].items():
             try:
                 html = self.fetch_page(url)
-                extracted_df.at[article_id, "body"] = self.extract_text(html)
+                extracted_df.at[article_id, "body"] = extract_article_text(html)
                 time.sleep(self.delay_seconds)
             except requests.HTTPError as exc:
                 status_code = exc.response.status_code if exc.response is not None else "unknown"

@@ -1,4 +1,4 @@
-from src.extraction.web_extractor import ArticleHtmlParser, Extractor, WebExtractor
+from src.extraction.web_extractor import Extractor, WebExtractor, extract_article_text
 
 
-__all__ = ["ArticleHtmlParser", "Extractor", "WebExtractor"]
+__all__ = ["extract_article_text", "Extractor", "WebExtractor"]

@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from src.extraction.web_extractor import ArticleHtmlParser, WebExtractor
+from src.extraction.web_extractor import WebExtractor, extract_article_text
 
 
 class FakeResponse:
@@ -46,9 +46,7 @@ class ArticleHtmlParserTests(unittest.TestCase):
         </html>
         """
 
-        parser = ArticleHtmlParser()
-
-        extracted = parser.extract_text(html)
+        extracted = extract_article_text(html)
 
         self.assertEqual(extracted, "First paragraph. Second paragraph.")
 

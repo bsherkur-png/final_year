@@ -3,9 +3,9 @@ from pathlib import Path
 import pandas as pd
 
 from scripts.ingestion.build_master_csv import build_master_csv
-from src.comparison.outlet_comparator import OutletComparator
+from src.comparison.outlet_comparator import summarize_outlets
 from src.extraction.web_extractor import WebExtractor
-from src.preprocessing.article_preprocessor import ArticlePreprocessor, ShamimaBegumFilter
+from src.preprocessing.article_preprocessor import ArticlePreprocessor, filter_shamima_mentions
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer
 
 
@@ -81,8 +81,9 @@ class NewsPipeline:
     def run_filtering(self) -> pd.DataFrame:
         extracted_df = pd.read_csv(self.extraction_raw_output_path)
         extracted_df = self._ensure_article_id(extracted_df)
-        filtered_df = ShamimaBegumFilter(min_mentions=2).filter_articles(
+        filtered_df = filter_shamima_mentions(
             extracted_df,
+            min_mentions=2,
             text_columns=("title", "body"),
         )
 
@@ -129,7 +130,7 @@ class NewsPipeline:
         sentiment_df = pd.read_csv(self.raw_sentiment_output_path)
         sentiment_df = self._ensure_article_id(sentiment_df)
 
-        summary_df = OutletComparator().summarize_outlets(
+        summary_df = summarize_outlets(
             sentiment_df,
             polarity_column="vader_score",
         )

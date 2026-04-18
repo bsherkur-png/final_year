@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from src.preprocessing.article_preprocessor import ArticlePreprocessor, ShamimaBegumFilter
+from src.preprocessing.article_preprocessor import ArticlePreprocessor, filter_shamima_mentions
 
 
 class FakeToken:
@@ -62,17 +62,7 @@ class ArticlePreprocessorTests(unittest.TestCase):
 
 
 class ShamimaBegumFilterTests(unittest.TestCase):
-    def test_count_mentions_uses_exact_phrase(self):
-        article_filter = ShamimaBegumFilter()
-
-        count = article_filter._count_mentions(
-            "Shamima Begum was mentioned. shamima begum appeared again. shamima only."
-        )
-
-        self.assertEqual(count, 2)
-
     def test_filter_articles_counts_mentions_across_title_and_body(self):
-        article_filter = ShamimaBegumFilter()
         articles = pd.DataFrame(
             {
                 "article_id": ["a1", "a2", "a3"],
@@ -89,16 +79,15 @@ class ShamimaBegumFilterTests(unittest.TestCase):
             }
         )
 
-        filtered = article_filter.filter_articles(articles)
+        filtered = filter_shamima_mentions(articles)
 
         self.assertEqual(filtered["article_id"].tolist(), ["a1"])
 
     def test_filter_articles_requires_title_and_body_columns(self):
-        article_filter = ShamimaBegumFilter()
         articles = pd.DataFrame({"body": ["shamima begum shamima begum"]})
 
         with self.assertRaisesRegex(ValueError, "title"):
-            article_filter.filter_articles(articles)
+            filter_shamima_mentions(articles)
 
 
 if __name__ == "__main__":

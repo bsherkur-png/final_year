@@ -1,28 +1,24 @@
 import pandas as pd
 
 
-class OutletComparator:
-    def summarize_outlets(
-        self, df: pd.DataFrame, polarity_column: str = "vader_score"
-    ) -> pd.DataFrame:
-        if "news_outlet" not in df.columns:
-            raise ValueError('Missing required column: "news_outlet"')
-        if polarity_column not in df.columns:
-            raise ValueError(f'Missing required column: "{polarity_column}"')
+SCORE_COLUMNS = ("vader_score", "sentiwordnet_score", "nrc_score")
 
-        score_columns = ("vader_score", "sentiwordnet_score", "nrc_score")
-        present_columns = [column for column in score_columns if column in df.columns]
 
-        if not present_columns:
-            return df[["news_outlet"]].drop_duplicates().reset_index(drop=True)
+def summarize_outlets(df: pd.DataFrame, polarity_column: str = "vader_score") -> pd.DataFrame:
+    if "news_outlet" not in df.columns:
+        raise ValueError('Missing required column: "news_outlet"')
+    if polarity_column not in df.columns:
+        raise ValueError(f'Missing required column: "{polarity_column}"')
 
-        aggregations = {column: ["mean", "std", "count"] for column in present_columns}
-        summary_df = df.groupby("news_outlet", dropna=False).agg(aggregations).reset_index()
+    present = [c for c in SCORE_COLUMNS if c in df.columns]
+    if not present:
+        return df[["news_outlet"]].drop_duplicates().reset_index(drop=True)
 
-        summary_df.columns = [
-            "_".join(str(part) for part in parts if str(part))
-            if isinstance(parts, tuple)
-            else str(parts)
-            for parts in summary_df.columns
-        ]
-        return summary_df
+    summary = df.groupby("news_outlet", dropna=False).agg(
+        {c: ["mean", "std", "count"] for c in present}
+    ).reset_index()
+    summary.columns = [
+        "_".join(p for p in parts if p) if isinstance(parts, tuple) else parts
+        for parts in summary.columns
+    ]
+    return summary
