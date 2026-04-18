@@ -10,6 +10,8 @@ class FakeResponse:
     def __init__(self, text: str, error: Exception | None = None):
         self.text = text
         self._error = error
+        self.encoding = None
+        self.apparent_encoding = "utf-8"
 
     def raise_for_status(self) -> None:
         if self._error is not None:
@@ -78,14 +80,20 @@ class WebExtractorTests(unittest.TestCase):
             }
         )
 
-        with patch("src.extraction.web_extractor.time.sleep") as sleep_mock, patch("builtins.print") as print_mock:
+        with patch("src.extraction.web_extractor.time.sleep") as sleep_mock:
             extracted = extractor.extract(df)
 
-        self.assertEqual(list(extracted.columns), ["article_id", "news_outlet", "title", "date_link", "body"])
+        self.assertEqual(
+            list(extracted.columns),
+            ["article_id", "news_outlet", "title", "date_link", "body", "fetch_status", "fetch_error"],
+        )
         self.assertEqual(extracted.loc[0, "body"], "Alpha Beta")
+        self.assertEqual(extracted.loc[0, "fetch_status"], "ok")
+        self.assertEqual(extracted.loc[0, "fetch_error"], "")
         self.assertEqual(extracted.loc[1, "body"], "")
+        self.assertEqual(extracted.loc[1, "fetch_status"], "error:RuntimeError")
+        self.assertEqual(extracted.loc[1, "fetch_error"], "network error")
         sleep_mock.assert_called_once_with(2)
-        print_mock.assert_any_call("Failed at https://bad.test: network error")
 
     def test_extract_requires_url_column(self):
         extractor = WebExtractor()

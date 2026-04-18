@@ -2,6 +2,7 @@ import time
 
 import pandas as pd
 import requests
+
 try:
     from bs4 import BeautifulSoup
 except ImportError:
@@ -13,6 +14,12 @@ DEFAULT_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/120.0.0.0 Safari/537.36"
 )
+DEFAULT_BROWSER_HEADERS = {
+    "User-Agent": DEFAULT_USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+}
 
 
 class ArticleHtmlParser:
@@ -47,19 +54,19 @@ class WebExtractor:
     def __init__(
         self,
         delay_seconds: int = 5,
-        timeout_seconds: int = 5,
+        timeout_seconds: int = 20,
     ):
         self.delay_seconds = delay_seconds
         self.timeout_seconds = timeout_seconds
         self.session = requests.Session()
         self.parser = ArticleHtmlParser()
-        self.session.headers.update({"User-Agent": DEFAULT_USER_AGENT})
+        self.session.headers.update(DEFAULT_BROWSER_HEADERS)
 
     def fetch_page(self, url: str) -> str:
         response = self.session.get(url, timeout=self.timeout_seconds)
         response.raise_for_status()
-        response.encoding = 'utf-8'
-        return response.content
+        response.encoding = response.encoding or response.apparent_encoding or "utf-8"
+        return response.text
 
     def extract_text(self, html: str) -> str:
         return self.parser.extract_text(html)
@@ -90,19 +97,35 @@ class WebExtractor:
             ["article_id", "news_outlet", "title", "date_link", "body"],
         ]
         extracted_df = extracted_df.set_index("article_id", drop=False)
+        extracted_df["fetch_status"] = "ok"
+        extracted_df["fetch_error"] = ""
 
         for article_id, url in extracted_df[url_column].items():
             try:
                 html = self.fetch_page(url)
                 extracted_df.at[article_id, "body"] = self.extract_text(html)
                 time.sleep(self.delay_seconds)
-            except Exception as exc:
+            except requests.HTTPError as exc:
+                status_code = exc.response.status_code if exc.response is not None else "unknown"
+                extracted_df.at[article_id, "fetch_status"] = f"http_{status_code}"
+                extracted_df.at[article_id, "fetch_error"] = str(exc)
                 extracted_df.at[article_id, "body"] = ""
-                print(f"Failed at {url}: {exc}")
+            except Exception as exc:
+                extracted_df.at[article_id, "fetch_status"] = f"error:{type(exc).__name__}"
+                extracted_df.at[article_id, "fetch_error"] = str(exc)
+                extracted_df.at[article_id, "body"] = ""
 
         return extracted_df.reset_index(drop=True).loc[
             :,
-            ["article_id", "news_outlet", "title", "date_link", "body"],
+            [
+                "article_id",
+                "news_outlet",
+                "title",
+                "date_link",
+                "body",
+                "fetch_status",
+                "fetch_error",
+            ],
         ]
 
 

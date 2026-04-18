@@ -60,6 +60,30 @@ class NewsPipeline:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(output_path, index=False)
 
+    @staticmethod
+    def _ensure_article_id(df: pd.DataFrame) -> pd.DataFrame:
+        import hashlib
+
+        if "article_id" in df.columns:
+            return df
+
+        url_col = next((c for c in ("date_link", "link", "url") if c in df.columns), None)
+        if url_col is None:
+            raise ValueError("Cannot derive article_id: no URL column found.")
+
+        output_df = df.copy()
+        output_df["article_id"] = output_df[url_col].apply(
+            lambda value: hashlib.sha256(str(value).encode()).hexdigest()
+        )
+        return output_df
+
+    @staticmethod
+    def _resolve_body_column(df: pd.DataFrame) -> str:
+        for candidate in ("body", "original_body_text", "text", "content"):
+            if candidate in df.columns:
+                return candidate
+        raise ValueError(f"No body column found. Available: {list(df.columns)}")
+
     def run_ingestion(self) -> pd.DataFrame:
         ingested_df = build_master_csv(
             input_file=self.source_path,
@@ -81,10 +105,10 @@ class NewsPipeline:
     def run_filtering(self) -> pd.DataFrame:
         extracted_df = pd.read_csv(self.extraction_raw_output_path)
         extracted_df = self._ensure_article_id(extracted_df)
-
-        if self.preprocessor is None:
-            self.preprocessor = ArticlePreprocessor.from_spacy_model()
-        filtered_df = ShamimaBegumFilter(self.preprocessor).filter_articles(extracted_df)
+        filtered_df = ShamimaBegumFilter(min_mentions=2).filter_articles(
+            extracted_df,
+            text_columns=("title", "body"),
+        )
 
         self._write_csv(filtered_df, self.extraction_output_path)
         return filtered_df
@@ -151,7 +175,3 @@ class NewsPipeline:
         sentiment_df = self.run_raw_sentiment()
         self.run_outlet_comparison()
         return sentiment_df
-
-def run_news_pipeline(source):
-    pipeline = NewsPipeline(ingestion_output=source)
-    return pipeline.run()

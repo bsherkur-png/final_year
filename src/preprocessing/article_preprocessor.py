@@ -54,26 +54,34 @@ class ArticlePreprocessor:
 
 
 class ShamimaBegumFilter:
-    def __init__(self, preprocessor: ArticlePreprocessor):
+    def __init__(self, preprocessor: ArticlePreprocessor | None = None, min_mentions: int = 2):
         self.preprocessor = preprocessor
-        self.pattern = re.compile(r"\bshamima\s+begum\b")
+        self.min_mentions = min_mentions
+        self.pattern = re.compile(r"\bshamima\s+begum\b", re.IGNORECASE)
 
-    def _normalize_text(self, text: str) -> str:
-        if text is None or pd.isna(text):
-            return ""
+    def _count_mentions(self, *texts: str) -> int:
+        merged_text = " ".join(
+            "" if text is None or pd.isna(text) else str(text)
+            for text in texts
+        )
+        return len(self.pattern.findall(merged_text))
 
-        doc = self.preprocessor._ensure_nlp()(str(text))
-        return " ".join(token.text.lower() for token in doc if not token.is_space)
+    def filter_articles(
+        self,
+        articles: pd.DataFrame,
+        text_columns: tuple[str, ...] = ("title", "body"),
+    ) -> pd.DataFrame:
+        missing_columns = [column for column in text_columns if column not in articles.columns]
+        if missing_columns:
+            raise ValueError(
+                f"DataFrame must contain columns {missing_columns}. "
+                f"Available: {list(articles.columns)}"
+            )
 
-    def _count_mentions(self, text: str) -> int:
-        normalized_text = self._normalize_text(text)
-        return len(self.pattern.findall(normalized_text))
-
-    def filter_articles(self, articles: pd.DataFrame) -> pd.DataFrame:
-        if "body" not in articles.columns:
-            raise ValueError("DataFrame must contain column 'body'.")
-
-        mention_counts = articles["body"].apply(self._count_mentions)
-        return articles.loc[mention_counts >= 2].reset_index(drop=True)
+        mention_counts = articles.apply(
+            lambda row: self._count_mentions(*(row[column] for column in text_columns)),
+            axis=1,
+        )
+        return articles.loc[mention_counts >= self.min_mentions].reset_index(drop=True)
 
 

@@ -63,8 +63,7 @@ class ArticlePreprocessorTests(unittest.TestCase):
 
 class ShamimaBegumFilterTests(unittest.TestCase):
     def test_count_mentions_uses_exact_phrase(self):
-        preprocessor = ArticlePreprocessor(nlp=FakeNlp())
-        article_filter = ShamimaBegumFilter(preprocessor)
+        article_filter = ShamimaBegumFilter()
 
         count = article_filter._count_mentions(
             "Shamima Begum was mentioned. shamima begum appeared again. shamima only."
@@ -72,15 +71,19 @@ class ShamimaBegumFilterTests(unittest.TestCase):
 
         self.assertEqual(count, 2)
 
-    def test_filter_articles_keeps_rows_with_two_or_more_mentions(self):
-        preprocessor = ArticlePreprocessor(nlp=FakeNlp())
-        article_filter = ShamimaBegumFilter(preprocessor)
+    def test_filter_articles_counts_mentions_across_title_and_body(self):
+        article_filter = ShamimaBegumFilter()
         articles = pd.DataFrame(
             {
                 "article_id": ["a1", "a2", "a3"],
+                "title": [
+                    "Shamima Begum update",
+                    "Other headline",
+                    "No mention",
+                ],
                 "body": [
-                    "shamima begum once.",
-                    "shamima begum twice shamima begum.",
+                    "shamima begum once in body",
+                    "shamima begum appears once in body",
                     "other content",
                 ],
             }
@@ -88,14 +91,13 @@ class ShamimaBegumFilterTests(unittest.TestCase):
 
         filtered = article_filter.filter_articles(articles)
 
-        self.assertEqual(filtered["article_id"].tolist(), ["a2"])
+        self.assertEqual(filtered["article_id"].tolist(), ["a1"])
 
-    def test_filter_articles_requires_body_column(self):
-        preprocessor = ArticlePreprocessor(nlp=FakeNlp())
-        article_filter = ShamimaBegumFilter(preprocessor)
-        articles = pd.DataFrame({"text": ["shamima begum shamima begum"]})
+    def test_filter_articles_requires_title_and_body_columns(self):
+        article_filter = ShamimaBegumFilter()
+        articles = pd.DataFrame({"body": ["shamima begum shamima begum"]})
 
-        with self.assertRaisesRegex(ValueError, "body"):
+        with self.assertRaisesRegex(ValueError, "title"):
             article_filter.filter_articles(articles)
 
 
