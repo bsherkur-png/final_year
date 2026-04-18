@@ -4,56 +4,34 @@ import pandas as pd
 
 from scripts.ingestion.build_master_csv import build_master_csv
 from src.comparison.outlet_comparator import OutletComparator
-from src.extraction.scraper import Extractor
+from src.extraction.web_extractor import WebExtractor
 from src.preprocessing.article_preprocessor import ArticlePreprocessor, ShamimaBegumFilter
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SOURCE = PROJECT_ROOT / "data" / "raw" / "news_meta_data.csv"
-DEFAULT_INGESTION_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "master_articles.csv"
-DEFAULT_EXTRACTION_RAW_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "articles_with_bodies_raw.csv"
-DEFAULT_EXTRACTION_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "articles_with_bodies.csv"
-DEFAULT_PREPROCESS_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "preprocessed_articles.csv"
-DEFAULT_RAW_SENTIMENT_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "raw_sentiment_articles.csv"
-DEFAULT_OUTLET_COMPARISON_OUTPUT = (
-    PROJECT_ROOT / "data" / "intermediate" / "outlet_comparison_summary.csv"
-)
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "intermediate"
+DEFAULT_INGESTION_OUTPUT = DEFAULT_OUTPUT_DIR / "master_articles.csv"
 
 
 class NewsPipeline:
     def __init__(
         self,
         source: str | Path = DEFAULT_SOURCE,
-        ingestion_output: str | Path = DEFAULT_INGESTION_OUTPUT,
-        extraction_output: str | Path = DEFAULT_EXTRACTION_OUTPUT,
-        extraction_raw_output: str | Path | None = DEFAULT_EXTRACTION_RAW_OUTPUT,
-        preprocess_output: str | Path = DEFAULT_PREPROCESS_OUTPUT,
-        raw_sentiment_output: str | Path = DEFAULT_RAW_SENTIMENT_OUTPUT,
-        outlet_comparison_output: str | Path = DEFAULT_OUTLET_COMPARISON_OUTPUT,
-        extractor=None,
-        preprocessor=None,
-        lexicon_scorer=None,
-        outlet_comparator=None,
+        output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+        ingestion_output: str | Path | None = None,
     ):
         self.source_path = Path(source)
-        self.ingestion_output_path = Path(ingestion_output)
-        self.extraction_output_path = Path(extraction_output)
-        if extraction_raw_output is None:
-            extraction_output_path = Path(extraction_output)
-            self.extraction_raw_output_path = extraction_output_path.with_name(
-                f"{extraction_output_path.stem}_raw{extraction_output_path.suffix}"
-            )
-        else:
-            self.extraction_raw_output_path = Path(extraction_raw_output)
-        self.preprocess_output_path = Path(preprocess_output)
-        self.raw_sentiment_output_path = Path(raw_sentiment_output)
-        self.outlet_comparison_output_path = Path(outlet_comparison_output)
-
-        self.extractor = extractor
-        self.preprocessor = preprocessor
-        self.lexicon_scorer = lexicon_scorer
-        self.outlet_comparator = outlet_comparator
+        self.output_dir = Path(output_dir)
+        self.ingestion_output_path = (
+            Path(ingestion_output) if ingestion_output else self.output_dir / "master_articles.csv"
+        )
+        self.extraction_raw_output_path = self.output_dir / "articles_with_bodies_raw.csv"
+        self.extraction_output_path = self.output_dir / "articles_with_bodies.csv"
+        self.preprocess_output_path = self.output_dir / "preprocessed_articles.csv"
+        self.raw_sentiment_output_path = self.output_dir / "raw_sentiment_articles.csv"
+        self.outlet_comparison_output_path = self.output_dir / "outlet_comparison_summary.csv"
 
     @staticmethod
     def _write_csv(df: pd.DataFrame, output_path: Path) -> None:
@@ -95,9 +73,7 @@ class NewsPipeline:
         master_df = pd.read_csv(self.ingestion_output_path)
         master_df = self._ensure_article_id(master_df)
 
-        if self.extractor is None:
-            self.extractor = Extractor()
-        extracted_df = self.extractor.extract(master_df)
+        extracted_df = WebExtractor().extract(master_df)
 
         self._write_csv(extracted_df, self.extraction_raw_output_path)
         return extracted_df
@@ -118,9 +94,7 @@ class NewsPipeline:
         extracted_df = self._ensure_article_id(extracted_df)
         body_column = self._resolve_body_column(extracted_df)
 
-        if self.preprocessor is None:
-            self.preprocessor = ArticlePreprocessor.from_spacy_model()
-        preprocessed_df = self.preprocessor.preprocess_dataframe(
+        preprocessed_df = ArticlePreprocessor.from_spacy_model().preprocess_dataframe(
             extracted_df,
             body_column=body_column,
         )
@@ -132,9 +106,7 @@ class NewsPipeline:
         preprocessed_df = pd.read_csv(self.preprocess_output_path)
         preprocessed_df = self._ensure_article_id(preprocessed_df)
 
-        if self.lexicon_scorer is None:
-            self.lexicon_scorer = LexiconScorer()
-        scored_df = self.lexicon_scorer.score_dataframe(preprocessed_df)
+        scored_df = LexiconScorer().score_dataframe(preprocessed_df)
 
         final_columns = [
             "article_id",
@@ -157,9 +129,7 @@ class NewsPipeline:
         sentiment_df = pd.read_csv(self.raw_sentiment_output_path)
         sentiment_df = self._ensure_article_id(sentiment_df)
 
-        if self.outlet_comparator is None:
-            self.outlet_comparator = OutletComparator()
-        summary_df = self.outlet_comparator.summarize_outlets(
+        summary_df = OutletComparator().summarize_outlets(
             sentiment_df,
             polarity_column="vader_score",
         )
