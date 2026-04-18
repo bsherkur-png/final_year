@@ -12,8 +12,6 @@ from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SOURCE = PROJECT_ROOT / "data" / "raw" / "news_meta_data.csv"
 DEFAULT_INGESTION_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "master_articles.csv"
-DEFAULT_CLUSTER_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "clustered_news_topics.csv"
-DEFAULT_CLUSTER_SUMMARY_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "cluster_topic_summary.csv"
 DEFAULT_EXTRACTION_RAW_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "articles_with_bodies_raw.csv"
 DEFAULT_EXTRACTION_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "articles_with_bodies.csv"
 DEFAULT_PREPROCESS_OUTPUT = PROJECT_ROOT / "data" / "intermediate" / "preprocessed_articles.csv"
@@ -28,23 +26,18 @@ class NewsPipeline:
         self,
         source: str | Path = DEFAULT_SOURCE,
         ingestion_output: str | Path = DEFAULT_INGESTION_OUTPUT,
-        cluster_output: str | Path = DEFAULT_CLUSTER_OUTPUT,
-        cluster_summary_output: str | Path = DEFAULT_CLUSTER_SUMMARY_OUTPUT,
         extraction_output: str | Path = DEFAULT_EXTRACTION_OUTPUT,
         extraction_raw_output: str | Path | None = DEFAULT_EXTRACTION_RAW_OUTPUT,
         preprocess_output: str | Path = DEFAULT_PREPROCESS_OUTPUT,
         raw_sentiment_output: str | Path = DEFAULT_RAW_SENTIMENT_OUTPUT,
         outlet_comparison_output: str | Path = DEFAULT_OUTLET_COMPARISON_OUTPUT,
         extractor=None,
-        cluster_service=None,
         preprocessor=None,
         lexicon_scorer=None,
         outlet_comparator=None,
     ):
         self.source_path = Path(source)
         self.ingestion_output_path = Path(ingestion_output)
-        self.cluster_output_path = Path(cluster_output)
-        self.cluster_summary_output_path = Path(cluster_summary_output)
         self.extraction_output_path = Path(extraction_output)
         if extraction_raw_output is None:
             extraction_output_path = Path(extraction_output)
@@ -58,7 +51,6 @@ class NewsPipeline:
         self.outlet_comparison_output_path = Path(outlet_comparison_output)
 
         self.extractor = extractor
-        self.cluster_service = cluster_service
         self.preprocessor = preprocessor
         self.lexicon_scorer = lexicon_scorer
         self.outlet_comparator = outlet_comparator
@@ -74,17 +66,6 @@ class NewsPipeline:
             output_file=self.ingestion_output_path,
         )
         return ingested_df
-
-    def run_clustering(self) -> pd.DataFrame:
-        ingested_df = pd.read_csv(self.ingestion_output_path)
-        if self.cluster_service is None:
-            from src.clustering.topic_clusterer.service import TopicFilterService
-
-            self.cluster_service = TopicFilterService()
-        clustering_result = self.cluster_service.run(ingested_df)
-        self._write_csv(clustering_result.clustered_titles, self.cluster_output_path)
-        self._write_csv(clustering_result.summary, self.cluster_summary_output_path)
-        return clustering_result.clustered_titles
 
     def run_extraction(self) -> pd.DataFrame:
         master_df = pd.read_csv(self.ingestion_output_path)
@@ -163,7 +144,7 @@ class NewsPipeline:
         return summary_df
 
     def run(self) -> pd.DataFrame:
-        # Active execution path starts from the existing master CSV and skips clustering.
+        # Active execution path starts from the existing master CSV.
         self.run_extraction()
         self.run_filtering()
         self.run_preprocessing()
