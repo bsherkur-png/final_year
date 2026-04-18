@@ -195,7 +195,7 @@ class NewsPipeline:
         self.run_outlet_comparison()
         return sentiment_df
 
-
+#new
 def run_news_pipeline(source):
     pipeline = NewsPipeline(ingestion_output=source)
     return pipeline.run()
