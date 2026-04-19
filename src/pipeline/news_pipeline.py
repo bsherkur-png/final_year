@@ -139,7 +139,7 @@ class NewsPipeline:
         return summary_df
 
     def run(self) -> pd.DataFrame:
-        # Active execution path starts from the existing master CSV.
+        self.run_ingestion()
         self.run_extraction()
         self.run_filtering()
         self.run_preprocessing()

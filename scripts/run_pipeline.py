@@ -1,20 +1,20 @@
 import argparse
 from pathlib import Path
 
-from src.pipeline.news_pipeline import DEFAULT_INGESTION_OUTPUT, NewsPipeline
+from src.pipeline.news_pipeline import DEFAULT_SOURCE, NewsPipeline
 
 
 def main():
     parser = argparse.ArgumentParser(description="Run the news pipeline.")
     parser.add_argument(
-        "input",
+        "source",
         type=Path,
         nargs="?",
-        default=DEFAULT_INGESTION_OUTPUT,
-        help="Master CSV path.",
+        default=DEFAULT_SOURCE,
+        help="Path to the raw news metadata CSV.",
     )
     args = parser.parse_args()
-    final_df = NewsPipeline(ingestion_output=args.input).run()
+    final_df = NewsPipeline(source=args.source).run()
     print(f"Pipeline complete. {len(final_df)} rows scored.")
 
 
