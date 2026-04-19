@@ -5,8 +5,9 @@ import pandas as pd
 from scripts.ingestion.build_master_csv import build_master_csv
 from src.comparison.outlet_comparator import summarize_outlets
 from src.extraction.web_extractor import WebExtractor
-from src.preprocessing.article_preprocessor import ArticlePreprocessor, filter_shamima_mentions
-from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer
+from src.preprocessing.article_preprocessor import filter_shamima_mentions
+from src.preprocessing.spacy_processor import SpacyProcessor, ProcessedArticle
+from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer, SentimentScores
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -62,6 +63,35 @@ class NewsPipeline:
                 return candidate
         raise ValueError(f"No body column found. Available: {list(df.columns)}")
 
+    def _process_with_spacy(self, df: pd.DataFrame) -> list[ProcessedArticle]:
+        body_column = self._resolve_body_column(df)
+        processor = SpacyProcessor()
+        return processor.process_dataframe(df, body_column=body_column)
+
+    def _score_sentiment(
+        self,
+        articles: list[ProcessedArticle],
+        df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        scorer = LexiconScorer()
+        scored = df.copy()
+
+        scores_by_id: dict[str, SentimentScores] = {}
+        for article in articles:
+            scores_by_id[article.article_id] = scorer.score_article(article)
+
+        scored["vader_score"] = scored["article_id"].map(
+            lambda aid: scores_by_id[aid].vader
+        )
+        scored["sentiwordnet_score"] = scored["article_id"].map(
+            lambda aid: scores_by_id[aid].sentiwordnet
+        )
+        scored["nrc_score"] = scored["article_id"].map(
+            lambda aid: scores_by_id[aid].nrc
+        )
+
+        return scored
+
     def run_ingestion(self) -> pd.DataFrame:
         ingested_df = build_master_csv(
             input_file=self.source_path,
@@ -90,24 +120,36 @@ class NewsPipeline:
         self._write_csv(filtered_df, self.extraction_output_path)
         return filtered_df
 
-    def run_preprocessing(self) -> pd.DataFrame:
-        extracted_df = pd.read_csv(self.extraction_output_path)
-        extracted_df = self._ensure_article_id(extracted_df)
-        body_column = self._resolve_body_column(extracted_df)
+    def run_preprocessing(self, df: pd.DataFrame) -> list[ProcessedArticle]:
+        articles = self._process_with_spacy(df)
 
-        preprocessed_df = ArticlePreprocessor().preprocess_dataframe(
-            extracted_df,
-            body_column=body_column,
-        )
+        # CSV checkpoint — write a flat version for debugging/inspection
+        rows = []
+        for a in articles:
+            rows.append(
+                {
+                    "article_id": a.article_id,
+                    "minimal_body_text": a.minimal_text,
+                    "lemmas": " ".join(a.lemmas),
+                }
+            )
+        checkpoint_df = pd.DataFrame(rows)
+        # Merge metadata from the input df so the checkpoint is self-contained
+        meta_cols = [c for c in ("news_outlet", "title", "date_link") if c in df.columns]
+        if meta_cols:
+            checkpoint_df = checkpoint_df.merge(
+                df[["article_id"] + meta_cols], on="article_id", how="left"
+            )
+        self._write_csv(checkpoint_df, self.preprocess_output_path)
 
-        self._write_csv(preprocessed_df, self.preprocess_output_path)
-        return preprocessed_df
+        return articles
 
-    def run_raw_sentiment(self) -> pd.DataFrame:
-        preprocessed_df = pd.read_csv(self.preprocess_output_path)
-        preprocessed_df = self._ensure_article_id(preprocessed_df)
-
-        scored_df = LexiconScorer().score_dataframe(preprocessed_df)
+    def run_raw_sentiment(
+        self,
+        articles: list[ProcessedArticle],
+        df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        scored_df = self._score_sentiment(articles, df)
 
         final_columns = [
             "article_id",
@@ -141,8 +183,12 @@ class NewsPipeline:
     def run(self) -> pd.DataFrame:
         self.run_ingestion()
         self.run_extraction()
-        self.run_filtering()
-        self.run_preprocessing()
-        sentiment_df = self.run_raw_sentiment()
+        filtered_df = self.run_filtering()
+
+        # spaCy processes once — result shared by sentiment + future bias classifier
+        articles = self.run_preprocessing(filtered_df)
+
+        sentiment_df = self.run_raw_sentiment(articles, filtered_df)
+        # TODO: bias classifier will consume articles here
         self.run_outlet_comparison()
         return sentiment_df

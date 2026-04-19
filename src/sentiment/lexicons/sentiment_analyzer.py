@@ -1,12 +1,24 @@
+from dataclasses import dataclass
 import re
 
 import pandas as pd
+
+from src.preprocessing.spacy_processor import ProcessedArticle
+
+
+@dataclass
+class SentimentScores:
+    """Scores from all three lexicon-based sentiment tools for one article."""
+
+    vader: float
+    sentiwordnet: float
+    nrc: float
 
 
 class LexiconScorer:
     """Calculate raw lexicon scores for one article."""
 
-    def __init__(self):
+    def __init__(self, nlp=None):
         from nltk.sentiment import SentimentIntensityAnalyzer
         from nltk.corpus import sentiwordnet as swn
         from nltk.corpus import wordnet as wn
@@ -14,6 +26,7 @@ class LexiconScorer:
         self.vader = SentimentIntensityAnalyzer()
         self.wordnet = wn
         self.sentiwordnet = swn
+        self._nlp = nlp
 
     def score_vader(self, text: str) -> float:
         """Return a raw VADER score for minimally preprocessed text."""
@@ -24,9 +37,8 @@ class LexiconScorer:
         scores = self.vader.polarity_scores(normalized_text)
         return float(scores["compound"])
 
-    def score_sentiwordnet(self, text: str) -> float:
+    def score_sentiwordnet(self, tokens: list[str]) -> float:
         """Return the average SentiWordNet score for matched tokens."""
-        tokens = self._tokenize(text)
         if not tokens:
             return 0.0
 
@@ -42,11 +54,10 @@ class LexiconScorer:
 
         return sum(scores) / len(scores)
 
-    def score_nrc(self, text: str) -> float:
+    def score_nrc(self, tokens: list[str]) -> float:
         """Return NRC raw sentiment as positive token count minus negative token count."""
         from nrclex import NRCLex
 
-        tokens = self._tokenize(text)
         if not tokens:
             return 0.0
 
@@ -58,32 +69,44 @@ class LexiconScorer:
 
         return float(positive_count - negative_count)
 
-    def score_article(self, minimal_text: str, processed_text: str) -> dict:
+    def score_article(self, article: ProcessedArticle) -> SentimentScores:
         """Return the three raw lexicon scores for one article."""
-        return {
-            "vader_score": self.score_vader(minimal_text),
-            "sentiwordnet_score": self.score_sentiwordnet(processed_text),
-            "nrc_score": self.score_nrc(processed_text),
-        }
+        return SentimentScores(
+            vader=self.score_vader(article.minimal_text),
+            sentiwordnet=self.score_sentiwordnet(article.lemmas),
+            nrc=self.score_nrc(article.lemmas),
+        )
 
-    def score_dataframe(self, dataframe):
+    def score_dataframe(self, dataframe: pd.DataFrame) -> pd.DataFrame:
         """Return the input dataframe with lexicon score columns appended."""
         if not isinstance(dataframe, pd.DataFrame):
             raise TypeError("score_dataframe expects a pandas DataFrame.")
 
         self._validate_dataframe_columns(dataframe)
+        nlp = self._ensure_nlp()
         scored_dataframe = dataframe.copy()
-        scored_dataframe["vader_score"] = scored_dataframe["minimal_body_text"].apply(
-            self.score_vader
-        )
-        scored_dataframe["sentiwordnet_score"] = scored_dataframe[
-            "fully_preprocessed_body_text"
-        ].apply(self.score_sentiwordnet)
-        scored_dataframe["nrc_score"] = scored_dataframe[
-            "fully_preprocessed_body_text"
-        ].apply(self.score_nrc)
+
+        for idx, row in scored_dataframe.iterrows():
+            article = ProcessedArticle(
+                article_id=row["article_id"],
+                raw_text=row["minimal_body_text"],
+                doc=nlp(str(row.get("minimal_body_text", ""))),
+            )
+            scores = self.score_article(article)
+            scored_dataframe.at[idx, "vader_score"] = scores.vader
+            scored_dataframe.at[idx, "sentiwordnet_score"] = scores.sentiwordnet
+            scored_dataframe.at[idx, "nrc_score"] = scores.nrc
 
         return scored_dataframe
+
+    def _ensure_nlp(self):
+        """Load and cache the spaCy pipeline for DataFrame compatibility scoring."""
+        if self._nlp is None:
+            import spacy
+
+            self._nlp = spacy.load("en_core_web_sm")
+
+        return self._nlp
 
     @staticmethod
     def _normalise_text(text: str) -> str:
@@ -92,15 +115,6 @@ class LexiconScorer:
             return ""
 
         return re.sub(r"\s+", " ", str(text)).strip()
-
-    @staticmethod
-    def _tokenize(text: str) -> list[str]:
-        """Split text into simple lowercase word tokens."""
-        normalized_text = LexiconScorer._normalise_text(text).lower()
-        if not normalized_text:
-            return []
-
-        return re.findall(r"[a-z]+", normalized_text)
 
     def _lookup_sentiwordnet_score(self, token: str) -> float | None:
         """Return a simple SentiWordNet score for one token."""
