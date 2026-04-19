@@ -9,7 +9,7 @@ from src.preprocessing.article_preprocessor import filter_shamima_mentions
 from src.preprocessing.spacy_processor import SpacyProcessor, ProcessedArticle
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer, SentimentScores
 from src.bias.feature_builder import FeatureBuilder
-from src.bias.bias_classifier import BiasClassifier, ClassifierResult
+from src.bias.topic_clusterer import TopicClusterer, ClusteringResult
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -35,8 +35,8 @@ class NewsPipeline:
         self.preprocess_output_path = self.output_dir / "preprocessed_articles.csv"
         self.raw_sentiment_output_path = self.output_dir / "raw_sentiment_articles.csv"
         self.outlet_comparison_output_path = self.output_dir / "outlet_comparison_summary.csv"
-        self.bias_features_output_path = self.output_dir / "bias_features.csv"
-        self.bias_coefficients_output_path = self.output_dir / "outlet_linguistic_signature.csv"
+        self.cluster_assignments_output_path = self.output_dir / "cluster_assignments.csv"
+        self.cluster_top_terms_output_path = self.output_dir / "cluster_top_terms.csv"
 
     @staticmethod
     def _write_csv(df: pd.DataFrame, output_path: Path) -> None:
@@ -184,29 +184,32 @@ class NewsPipeline:
         self._write_csv(summary_df, self.outlet_comparison_output_path)
         return summary_df
 
-    def run_bias_classifier(
+    def run_clustering(
         self,
         articles: list[ProcessedArticle],
         df: pd.DataFrame,
-    ) -> ClassifierResult:
-        """Build features and run logistic regression with outlet as proxy label."""
+    ) -> ClusteringResult:
         if "news_outlet" not in df.columns:
             raise ValueError("Missing required column: news_outlet")
 
         builder = FeatureBuilder()
         feature_matrix = builder.build(articles)
+        feature_names = builder.feature_names
 
-        labels = []
-        article_id_order = [a.article_id for a in articles]
+        article_ids = [a.article_id for a in articles]
         id_to_outlet = dict(zip(df["article_id"], df["news_outlet"]))
-        for aid in article_id_order:
-            labels.append(id_to_outlet[aid])
-
-        classifier = BiasClassifier()
-        result = classifier.run(feature_matrix, labels, builder.feature_names)
-
-        # CSV checkpoints
-        self._write_csv(result.coefficients, self.bias_coefficients_output_path)
+        outlets = [id_to_outlet[article_id] for article_id in article_ids]
+        result = TopicClusterer().run(
+            feature_matrix, article_ids, outlets, feature_names
+        )
+        self._write_csv(result.assignments, self.cluster_assignments_output_path)
+        top_terms_df = pd.DataFrame(
+            [
+                {"cluster": cluster, "terms": ", ".join(terms)}
+                for cluster, terms in result.top_terms.items()
+            ]
+        )
+        self._write_csv(top_terms_df, self.cluster_top_terms_output_path)
 
         return result
 
@@ -215,10 +218,10 @@ class NewsPipeline:
         self.run_extraction()
         filtered_df = self.run_filtering()
 
-        # spaCy processes once — result shared by sentiment + future bias classifier
+        # spaCy processes once — result shared by sentiment + clustering
         articles = self.run_preprocessing(filtered_df)
 
         sentiment_df = self.run_raw_sentiment(articles, filtered_df)
-        self.run_bias_classifier(articles, filtered_df)
+        self.run_clustering(articles, filtered_df)
         self.run_outlet_comparison()
         return sentiment_df
