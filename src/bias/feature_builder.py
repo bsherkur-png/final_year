@@ -7,7 +7,6 @@ from sklearn.preprocessing import StandardScaler
 
 from src.preprocessing.spacy_processor import ProcessedArticle
 
-
 MODAL_VERBS = frozenset({"would", "could", "might", "must", "shall", "should"})
 
 ATTRIBUTION_VERBS = frozenset(
@@ -50,6 +49,7 @@ class FeatureBuilder:
         self._tfidf = TfidfVectorizer(
             tokenizer=lambda x: x,
             preprocessor=lambda x: x,
+            token_pattern=None,
             lowercase=False,
             max_features=max_tfidf_features,
             ngram_range=(1, 2),
@@ -133,9 +133,9 @@ class FeatureBuilder:
     def _attribution_rate(self, doc) -> float:
         n_tokens = max(len(doc), 1)
         return (
-            sum(1 for token in doc if token.lemma_.lower() in ATTRIBUTION_VERBS)
-            / n_tokens
-            * 100
+                sum(1 for token in doc if token.lemma_.lower() in ATTRIBUTION_VERBS)
+                / n_tokens
+                * 100
         )
 
     def _passive_rate(self, doc) -> float:
@@ -145,7 +145,7 @@ class FeatureBuilder:
     def _ner_rate(self, doc) -> float:
         n_tokens = max(len(doc), 1)
         return (
-            sum(1 for entity in doc.ents if entity.label_ in TARGET_ENTITY_LABELS)
-            / n_tokens
-            * 100
+                sum(1 for entity in doc.ents if entity.label_ in TARGET_ENTITY_LABELS)
+                / n_tokens
+                * 100
         )

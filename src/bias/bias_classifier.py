@@ -25,14 +25,13 @@ class BiasClassifier:
             max_iter=1000,
             class_weight="balanced",
             solver="lbfgs",
-            multi_class="multinomial",
         )
 
     def run(
-        self,
-        feature_matrix: csr_matrix,
-        labels: list[str],
-        feature_names: list[str],
+            self,
+            feature_matrix: csr_matrix,
+            labels: list[str],
+            feature_names: list[str],
     ) -> ClassifierResult:
         """Train and evaluate the classifier, then return coefficients and metrics."""
         label_array = np.array(labels)
