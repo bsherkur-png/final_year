@@ -220,7 +220,6 @@ class NewsPipeline:
 
         # spaCy processes once — result shared by sentiment + clustering
         articles = self.run_preprocessing(filtered_df)
-        filtered_df = filtered_df.groupby("news_outlet").filter(lambda g: len(g) >= 6)
 
         sentiment_df = self.run_raw_sentiment(articles, filtered_df)
         self.run_clustering(articles, filtered_df)
