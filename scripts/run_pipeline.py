@@ -2,12 +2,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.pipeline.news_pipeline import DEFAULT_SOURCE, NewsPipeline
+from src.pipeline.config import PipelineConfig
+from src.pipeline.news_pipeline import NewsPipeline
 
 
 
 def _pipeline() -> NewsPipeline:
-    return NewsPipeline(source=DEFAULT_SOURCE)
+    return NewsPipeline()
 
 
 def _check_file(path: Path, label: str) -> bool:
@@ -54,7 +55,7 @@ def run_ingestion():
 
 def run_extraction():
     pipeline = _pipeline()
-    if not _check_file(pipeline.ingestion_output_path, "Master CSV"):
+    if not _check_file(pipeline.config.ingestion_output, "Master CSV"):
         return
     df = pipeline.run_extraction()
     print(f"Extraction complete. {len(df)} rows.")
@@ -62,7 +63,7 @@ def run_extraction():
 
 def run_filtering():
     pipeline = _pipeline()
-    if not _check_file(pipeline.extraction_raw_output_path, "Extracted articles"):
+    if not _check_file(pipeline.config.extraction_raw_output, "Extracted articles"):
         return
     df = pipeline.run_filtering()
     print(f"Filtering complete. {len(df)} articles remain.")
@@ -71,11 +72,10 @@ def run_filtering():
 def run_analysis_stages():
     """Run preprocessing, sentiment, and clustering from the filtered CSV."""
     pipeline = _pipeline()
-    if not _check_file(pipeline.extraction_output_path, "Filtered articles"):
+    if not _check_file(pipeline.config.extraction_output, "Filtered articles"):
         return
 
-    filtered_df = pd.read_csv(pipeline.extraction_output_path)
-    filtered_df = pipeline._ensure_article_id(filtered_df)
+    filtered_df = pd.read_csv(pipeline.config.extraction_output)
     filtered_df = filtered_df.groupby("news_outlet").filter(lambda g: len(g) >= 6)
 
     print(f"Processing {len(filtered_df)} articles...")
@@ -91,7 +91,7 @@ def run_analysis_stages():
 
 def run_outlet_comparison():
     pipeline = _pipeline()
-    if not _check_file(pipeline.raw_sentiment_output_path, "Sentiment scores"):
+    if not _check_file(pipeline.config.raw_sentiment_output, "Sentiment scores"):
         return
     pipeline.run_outlet_comparison()
     print("Outlet comparison complete.")
@@ -99,10 +99,10 @@ def run_outlet_comparison():
 
 def run_statistical_tests():
     pipeline = _pipeline()
-    if not _check_file(pipeline.raw_sentiment_output_path, "Sentiment scores"):
+    if not _check_file(pipeline.config.raw_sentiment_output, "Sentiment scores"):
         return
 
-    df = pd.read_csv(pipeline.raw_sentiment_output_path)
+    df = pd.read_csv(pipeline.config.raw_sentiment_output)
     results = run_all_tests(df)
     print(format_results(results))
 

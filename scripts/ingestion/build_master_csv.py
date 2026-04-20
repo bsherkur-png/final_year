@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 from pathlib import Path
 
 import pandas as pd
@@ -8,6 +9,9 @@ def build_master_csv(input_file: Path, output_file: Path) -> pd.DataFrame:
     df = pd.read_csv(input_file)
     df = df.rename(columns={"link": "date_link", "source": "news_outlet"})
     df = df.drop(columns=["page", "snippet"])
+    df["article_id"] = df["date_link"].apply(
+        lambda url: hashlib.sha256(str(url).encode()).hexdigest()
+    )
     output_file.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_file, index=False)
     return df

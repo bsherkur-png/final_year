@@ -3,62 +3,27 @@ from pathlib import Path
 import pandas as pd
 
 from scripts.ingestion.build_master_csv import build_master_csv
+from src.bias.feature_builder import FeatureBuilder
+from src.bias.topic_clusterer import TopicClusterer, ClusteringResult
 from src.comparison.outlet_comparator import summarize_outlets
 from src.extraction.web_extractor import WebExtractor
+from src.pipeline.config import PipelineConfig
 from src.preprocessing.filters import filter_shamima_mentions
 from src.preprocessing.spacy_processor import SpacyProcessor, ProcessedArticle
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer, SentimentScores
-from src.bias.feature_builder import FeatureBuilder
-from src.bias.topic_clusterer import TopicClusterer, ClusteringResult
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SOURCE = PROJECT_ROOT / "data" / "raw" / "news_meta_data.csv"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "intermediate"
-DEFAULT_INGESTION_OUTPUT = DEFAULT_OUTPUT_DIR / "master_articles.csv"
 
 
 class NewsPipeline:
     def __init__(
         self,
-        source: str | Path = DEFAULT_SOURCE,
-        output_dir: str | Path = DEFAULT_OUTPUT_DIR,
-        ingestion_output: str | Path | None = None,
-    ):
-        self.source_path = Path(source)
-        self.output_dir = Path(output_dir)
-        self.ingestion_output_path = (
-            Path(ingestion_output) if ingestion_output else self.output_dir / "master_articles.csv"
-        )
-        self.extraction_raw_output_path = self.output_dir / "articles_with_bodies_raw.csv"
-        self.extraction_output_path = self.output_dir / "articles_with_bodies.csv"
-        self.preprocess_output_path = self.output_dir / "preprocessed_articles.csv"
-        self.raw_sentiment_output_path = self.output_dir / "raw_sentiment_articles.csv"
-        self.outlet_comparison_output_path = self.output_dir / "outlet_comparison_summary.csv"
-        self.cluster_assignments_output_path = self.output_dir / "cluster_assignments.csv"
-        self.cluster_top_terms_output_path = self.output_dir / "cluster_top_terms.csv"
+        config: PipelineConfig | None = None,
+    ) -> None:
+        self.config = config or PipelineConfig()
 
     @staticmethod
-    def _write_csv(df: pd.DataFrame, output_path: Path) -> None:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(output_path, index=False)
-
-    @staticmethod
-    def _ensure_article_id(df: pd.DataFrame) -> pd.DataFrame:
-        import hashlib
-
-        if "article_id" in df.columns:
-            return df
-
-        url_col = next((c for c in ("date_link", "link", "url") if c in df.columns), None)
-        if url_col is None:
-            raise ValueError("Cannot derive article_id: no URL column found.")
-
-        output_df = df.copy()
-        output_df["article_id"] = output_df[url_col].apply(
-            lambda value: hashlib.sha256(str(value).encode()).hexdigest()
-        )
-        return output_df
+    def _write_csv(df: pd.DataFrame, destination: Path) -> None:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(destination, index=False)
 
     @staticmethod
     def _resolve_body_column(df: pd.DataFrame) -> str:
@@ -106,30 +71,28 @@ class NewsPipeline:
 
     def run_ingestion(self) -> pd.DataFrame:
         ingested_df = build_master_csv(
-            input_file=self.source_path,
-            output_file=self.ingestion_output_path,
+            input_file=self.config.source_path,
+            output_file=self.config.ingestion_output,
         )
         return ingested_df
 
     def run_extraction(self) -> pd.DataFrame:
-        master_df = pd.read_csv(self.ingestion_output_path)
-        master_df = self._ensure_article_id(master_df)
+        master_df = pd.read_csv(self.config.ingestion_output)
 
         extracted_df = WebExtractor().extract(master_df)
 
-        self._write_csv(extracted_df, self.extraction_raw_output_path)
+        self._write_csv(extracted_df, self.config.extraction_raw_output)
         return extracted_df
 
     def run_filtering(self) -> pd.DataFrame:
-        extracted_df = pd.read_csv(self.extraction_raw_output_path)
-        extracted_df = self._ensure_article_id(extracted_df)
+        extracted_df = pd.read_csv(self.config.extraction_raw_output)
         filtered_df = filter_shamima_mentions(
             extracted_df,
             min_mentions=2,
             text_columns=("title", "body"),
         )
 
-        self._write_csv(filtered_df, self.extraction_output_path)
+        self._write_csv(filtered_df, self.config.extraction_output)
         return filtered_df
 
     def run_preprocessing(self, df: pd.DataFrame) -> list[ProcessedArticle]:
@@ -152,7 +115,7 @@ class NewsPipeline:
             checkpoint_df = checkpoint_df.merge(
                 df[["article_id"] + meta_cols], on="article_id", how="left"
             )
-        self._write_csv(checkpoint_df, self.preprocess_output_path)
+        self._write_csv(checkpoint_df, self.config.preprocess_output)
 
         return articles
 
@@ -185,19 +148,18 @@ class NewsPipeline:
             raise ValueError(f"Missing required final sentiment columns: {missing_columns}")
 
         final_df = scored_df.loc[:, final_columns]
-        self._write_csv(final_df, self.raw_sentiment_output_path)
+        self._write_csv(final_df, self.config.raw_sentiment_output)
         return final_df
 
     def run_outlet_comparison(self) -> pd.DataFrame:
-        sentiment_df = pd.read_csv(self.raw_sentiment_output_path)
-        sentiment_df = self._ensure_article_id(sentiment_df)
+        sentiment_df = pd.read_csv(self.config.raw_sentiment_output)
 
         summary_df = summarize_outlets(
             sentiment_df,
             polarity_column="vader_score",
         )
 
-        self._write_csv(summary_df, self.outlet_comparison_output_path)
+        self._write_csv(summary_df, self.config.outlet_comparison_output)
         return summary_df
 
     def run_clustering(
@@ -218,14 +180,14 @@ class NewsPipeline:
         result = TopicClusterer().run(
             feature_matrix, article_ids, outlets, feature_names
         )
-        self._write_csv(result.assignments, self.cluster_assignments_output_path)
+        self._write_csv(result.assignments, self.config.cluster_assignments_output)
         top_terms_df = pd.DataFrame(
             [
                 {"cluster": cluster, "terms": ", ".join(terms)}
                 for cluster, terms in result.top_terms.items()
             ]
         )
-        self._write_csv(top_terms_df, self.cluster_top_terms_output_path)
+        self._write_csv(top_terms_df, self.config.cluster_top_terms_output)
 
         return result
 

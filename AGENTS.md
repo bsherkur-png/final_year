@@ -14,54 +14,38 @@ linguistic features to identify framing patterns. The dataset is small
 
 ```
 scripts/
-  ingestion/build_master_csv.py    — raw CSV → cleaned master CSV
+  ingestion/build_master_csv.py    — raw CSV → cleaned master CSV (assigns article_id)
   run_pipeline.py                  — CLI entry point
 
 src/
   extraction/web_extractor.py      — fetches article HTML, extracts body text
   preprocessing/
     spacy_processor.py             — SpacyProcessor + ProcessedArticle
-    article_preprocessor.py        — legacy preprocessor + filter_shamima_mentions
+    filters.py                     — filter_shamima_mentions (relevance filter)
   sentiment/lexicons/
     sentiment_analyzer.py          — LexiconScorer + SentimentScores
   bias/
     feature_builder.py             — FeatureBuilder + ArticleFeatures
     topic_clusterer.py             — TopicClusterer: k-means on feature matrix
   comparison/outlet_comparator.py  — outlet-level summary statistics
-  pipeline/news_pipeline.py        — orchestrates the full pipeline
+  pipeline/
+    config.py                      — PipelineConfig (all output paths)
+    news_pipeline.py               — orchestrates the full pipeline
 
 tests/                             — unittest-based test suite
 data/raw/                          — source CSV with article metadata
 data/intermediate/                 — pipeline stage outputs (CSV checkpoints)
 ```
 
-## Current state — what exists and what is being changed
+## Current state — active refactoring
 
-The pipeline is functional end-to-end. The sentiment scoring, preprocessing,
-extraction, and comparison stages are complete and stable.
+The pipeline is functional end-to-end. A series of refactoring tasks are
+in progress to fix code smells, remove dead code, separate preprocessing
+per lexicon, and improve testability. Each task is defined in a numbered
+prompt file under `codex_prompts/`.
 
-**Active refactor: replacing the logistic regression classifier with k-means
-clustering.**
-
-The old `src/bias/bias_classifier.py` used supervised logistic regression with
-outlet as a proxy label. This is being replaced by `src/bias/topic_clusterer.py`
-which uses unsupervised k-means clustering on the same feature matrix that
-`FeatureBuilder` already produces. The goal: group articles by writing style
-and word choice, then examine which outlets land in which clusters.
-
-Files being changed:
-1. **Delete** `src/bias/bias_classifier.py`
-2. **Create** `src/bias/topic_clusterer.py`
-3. **Modify** `src/pipeline/news_pipeline.py` — replace `run_bias_classifier`
-   with `run_clustering`, update imports, update `run()` method
-
-Files that must NOT change:
-- `src/bias/feature_builder.py` — stays exactly as-is
-- `src/preprocessing/spacy_processor.py` — stays exactly as-is
-- `src/sentiment/` — stays exactly as-is
-- `src/extraction/` — stays exactly as-is
-- `src/comparison/` — stays exactly as-is
-- `scripts/` — stays exactly as-is
+**Prompts must be executed in order (01 through 10).** Some prompts depend
+on changes made by earlier prompts.
 
 ## Key design decisions
 
@@ -74,13 +58,27 @@ holding:
 - `doc: spacy.tokens.Doc` — full spaCy Doc (tokens, POS, deps, NER)
 
 Computed `@property` values (derived from `doc`, not stored):
-- `minimal_text -> str` — `raw_text.strip()` (used by VADER)
-- `lemmas -> list[str]` — lowercased lemmas, excluding stopwords, punctuation,
-  and non-alphabetic tokens (used by TF-IDF, NRC, SentiWordNet)
-- `tokens -> list[str]` — lowercased token text, excluding punctuation only
+- `vader_text -> str` — whitespace-collapsed raw text for VADER. No
+  lowercasing, no tokenisation, no stop-word removal.
+- `sentiwordnet_tokens -> list[tuple[str, str, str]]` — `(lemma, wn_pos, synset_name)`
+  tuples. POS mapped from spaCy to WordNet. First-sense fallback when no
+  synsets match. Stop words, punctuation, non-alpha filtered out.
+- `nrc_tokens -> list[str]` — lowercased lemmas, stop words removed,
+  alpha only.
+- `lemmas -> list[str]` — same as `nrc_tokens` (kept for TF-IDF / clustering).
+- `tokens -> list[str]` — lowercased token text, punctuation excluded.
 
 `ProcessedArticle` is created once per article by `SpacyProcessor` and passed
 to every downstream stage. No stage should call `nlp()` again.
+
+### Each lexicon scorer receives only the preprocessing it needs
+
+| Scorer         | Input property          | Preprocessing applied                                                    |
+|----------------|-------------------------|--------------------------------------------------------------------------|
+| VADER          | `vader_text`            | Whitespace collapse only. No lowercasing, tokenisation, or stop removal. |
+| SentiWordNet   | `sentiwordnet_tokens`   | Tokenised, lemmatised, POS-tagged, first-sense WSD, lowercased, stops removed. |
+| NRC            | `nrc_tokens`            | Tokenised, lemmatised, lowercased, stop words removed.                   |
+| TF-IDF         | `lemmas`                | Same as nrc_tokens.                                                      |
 
 ### FeatureBuilder produces the feature matrix for clustering
 
@@ -93,33 +91,26 @@ This matrix is the input to `TopicClusterer`. The builder also exposes
 `feature_names` for inspecting which TF-IDF terms and linguistic features
 matter most per cluster.
 
-### TopicClusterer design constraints
+### PipelineConfig centralises paths
 
-- Input: the `csr_matrix` from `FeatureBuilder.build()`, plus a list of
-  `article_id` strings and a list of `news_outlet` strings (for labelling
-  output, not for training — k-means is unsupervised)
-- Must run k-means for a range of k values (2–8) and select best k by
-  silhouette score
-- Output: a `ClusteringResult` dataclass containing:
-  - `assignments: pd.DataFrame` — columns: article_id, news_outlet, cluster
-  - `top_terms: dict[int, list[str]]` — top 10 TF-IDF/linguistic feature
-    names per cluster by mean weight
-  - `silhouette_score: float` — silhouette score for the chosen k
-  - `k: int` — the chosen number of clusters
-- The pipeline writes `assignments` to CSV at
-  `data/intermediate/cluster_assignments.csv`
-- The pipeline writes `top_terms` to CSV at
-  `data/intermediate/cluster_top_terms.csv`
+All output paths live in a `PipelineConfig` dataclass in
+`src/pipeline/config.py`. `NewsPipeline.__init__` takes a `PipelineConfig`.
+No path strings are hardcoded in `news_pipeline.py`.
 
 ### SentimentScores is a typed return value
 
-`SentimentScores` (in `sentiment_analyzer.py`) is a dataclass with fields:
-`vader: float`, `sentiwordnet: float`, `nrc: float`.
+`SentimentScores` (in `sentiment_analyzer.py`) is a dataclass. The pipeline
+flattens it with `dataclasses.asdict()` — no manual per-field mapping.
 
 ### CSV checkpoints are for debugging, not data transfer
 
 The pipeline writes CSVs at each stage for inspection. But in-memory objects
 are the primary data transfer between stages in `pipeline.run()`.
+
+### article_id is assigned once at ingestion
+
+`build_master_csv` creates the `article_id` column (SHA-256 of URL).
+No downstream stage recomputes it. `_ensure_article_id` is removed.
 
 ### No abstract base classes unless needed
 
@@ -141,6 +132,9 @@ Use concrete classes and simple composition.
   `nlp = spacy.load(...)` at module scope).
 - **Never call `nlp()` on text that has already been processed.** Read from
   `ProcessedArticle.doc` instead.
+- **Never write unit tests.** The human will write tests later. Do not create
+  test files or test methods unless the prompt explicitly asks.
+- **Never delete or rename test files** that already exist.
 
 ## Coding conventions
 
@@ -149,13 +143,6 @@ Use concrete classes and simple composition.
 - Imports: standard library first, blank line, third-party, blank line, local.
 - Docstrings on public classes and methods.
 - No logging framework — `print()` sparingly for pipeline progress only.
-
-### Testing
-- Framework: `unittest.TestCase`. Not pytest.
-- File naming: `tests/test_<module_name>.py`.
-- Method naming: `test_<method_or_behaviour>_<expected_outcome>`.
-- Use test doubles (fakes) to avoid loading spaCy/NLTK in unit tests.
-- Run: `python -m pytest tests/ -v` from project root.
 
 ### Naming
 - Classes: `PascalCase`. Methods/variables: `snake_case`.
@@ -182,11 +169,38 @@ Use concrete classes and simple composition.
   with hardcoded column names.
 - **Module-level side effects.** No code at import time.
 - **God objects.** Pipeline orchestrates; business logic lives in its own module.
+- **Per-field mapping.** Use `dataclasses.asdict()` instead of mapping each
+  field manually.
+- **Per-call instantiation.** Expensive objects (NRCLex, SentimentIntensityAnalyzer)
+  are created in `__init__`, not per article.
 
 ## Files to read before modifying a module
 
-| Changing...                      | Read first                                       |
-|----------------------------------|--------------------------------------------------|
-| `src/bias/topic_clusterer.py`    | `src/bias/feature_builder.py`                    |
-| `src/pipeline/news_pipeline.py`  | `src/bias/topic_clusterer.py`, `feature_builder.py` |
-| any test file                    | the source file it tests + existing test patterns |
+| Changing...                        | Read first                                         |
+|------------------------------------|----------------------------------------------------|
+| `src/preprocessing/spacy_processor.py` | `src/sentiment/lexicons/sentiment_analyzer.py`  |
+| `src/sentiment/lexicons/sentiment_analyzer.py` | `src/preprocessing/spacy_processor.py`   |
+| `src/pipeline/news_pipeline.py`    | `src/pipeline/config.py`, `src/bias/topic_clusterer.py` |
+| `src/pipeline/config.py`          | `src/pipeline/news_pipeline.py`                    |
+| `scripts/ingestion/build_master_csv.py` | `src/pipeline/news_pipeline.py`               |
+| `src/preprocessing/filters.py`    | `src/preprocessing/article_preprocessor.py`        |
+| any test file                      | the source file it tests + existing test patterns  |
+
+## Prompt execution order
+
+```
+codex_prompts/
+  01_move_filter_delete_dead_preprocessor.md
+  02_assign_article_id_at_ingestion.md
+  03_extract_pipeline_config.md
+  04_add_vader_text_property.md
+  05_add_sentiwordnet_tokens_with_pos.md
+  06_add_nrc_tokens_property.md
+  07_update_lexicon_scorer.md
+  08_flatten_score_sentiment_with_asdict.md
+  09_cache_nrclex_instance.md
+  10_fix_run_pipeline_missing_import.md
+```
+
+Execute in order. After each prompt, verify the change compiles and
+the existing tests still pass before proceeding.
