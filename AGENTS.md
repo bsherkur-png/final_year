@@ -5,10 +5,10 @@
 A Python NLP pipeline analysing UK news coverage of Shamima Begum across five
 outlets (BBC, Guardian, Daily Mail, The Sun, The Independent). The pipeline
 extracts article text from the web, preprocesses it with spaCy, scores
-sentiment with three lexicon-based tools (VADER, NRC, SentiWordNet), and will
-include a logistic regression bias classifier using TF-IDF and linguistic
-features. The dataset is small (88 articles) — this is a research prototype,
-not a production system.
+sentiment with three lexicon-based tools (VADER, NRC, SentiWordNet), and
+includes a k-means clustering module that groups articles by TF-IDF and
+linguistic features to identify framing patterns. The dataset is small
+(88 articles) — this is a research prototype, not a production system.
 
 ## Architecture
 
@@ -20,13 +20,13 @@ scripts/
 src/
   extraction/web_extractor.py      — fetches article HTML, extracts body text
   preprocessing/
-    spacy_processor.py             — SpacyProcessor + ProcessedArticle (MUST CREATE)
+    spacy_processor.py             — SpacyProcessor + ProcessedArticle
     article_preprocessor.py        — legacy preprocessor + filter_shamima_mentions
   sentiment/lexicons/
     sentiment_analyzer.py          — LexiconScorer + SentimentScores
   bias/
-    feature_builder.py             — (planned) FeatureBuilder + ArticleFeatures
-    bias_classifier.py             — (planned) logistic regression wrapper
+    feature_builder.py             — FeatureBuilder + ArticleFeatures
+    topic_clusterer.py             — TopicClusterer: k-means on feature matrix
   comparison/outlet_comparator.py  — outlet-level summary statistics
   pipeline/news_pipeline.py        — orchestrates the full pipeline
 
@@ -35,29 +35,40 @@ data/raw/                          — source CSV with article metadata
 data/intermediate/                 — pipeline stage outputs (CSV checkpoints)
 ```
 
-## Current state — what exists and what is missing
+## Current state — what exists and what is being changed
 
-The pipeline (`news_pipeline.py`) and sentiment analyzer (`sentiment_analyzer.py`)
-have already been rewritten to use `ProcessedArticle` and `SentimentScores`.
-However, the file they import from does not exist yet:
+The pipeline is functional end-to-end. The sentiment scoring, preprocessing,
+extraction, and comparison stages are complete and stable.
 
-- `src/preprocessing/spacy_processor.py` — **DOES NOT EXIST**. Must be created
-  first. Both `news_pipeline.py` and `sentiment_analyzer.py` import
-  `SpacyProcessor` and `ProcessedArticle` from this module. The pipeline will
-  not run until this file is created.
+**Active refactor: replacing the logistic regression classifier with k-means
+clustering.**
 
-The remaining implementation sequence is:
-1. Create `spacy_processor.py` (unblocks everything)
-2. Create `feature_builder.py` (the main new feature)
-3. Create `bias_classifier.py` (consumes features)
-4. Wire bias classifier into the pipeline
+The old `src/bias/bias_classifier.py` used supervised logistic regression with
+outlet as a proxy label. This is being replaced by `src/bias/topic_clusterer.py`
+which uses unsupervised k-means clustering on the same feature matrix that
+`FeatureBuilder` already produces. The goal: group articles by writing style
+and word choice, then examine which outlets land in which clusters.
+
+Files being changed:
+1. **Delete** `src/bias/bias_classifier.py`
+2. **Create** `src/bias/topic_clusterer.py`
+3. **Modify** `src/pipeline/news_pipeline.py` — replace `run_bias_classifier`
+   with `run_clustering`, update imports, update `run()` method
+
+Files that must NOT change:
+- `src/bias/feature_builder.py` — stays exactly as-is
+- `src/preprocessing/spacy_processor.py` — stays exactly as-is
+- `src/sentiment/` — stays exactly as-is
+- `src/extraction/` — stays exactly as-is
+- `src/comparison/` — stays exactly as-is
+- `scripts/` — stays exactly as-is
 
 ## Key design decisions
 
 ### ProcessedArticle is the shared data object
 
-`ProcessedArticle` (to be created in `src/preprocessing/spacy_processor.py`)
-is a `@dataclass` holding:
+`ProcessedArticle` (in `src/preprocessing/spacy_processor.py`) is a `@dataclass`
+holding:
 - `article_id: str` — SHA-256 hash of the article URL
 - `raw_text: str` — original article body, unmodified
 - `doc: spacy.tokens.Doc` — full spaCy Doc (tokens, POS, deps, NER)
@@ -71,23 +82,48 @@ Computed `@property` values (derived from `doc`, not stored):
 `ProcessedArticle` is created once per article by `SpacyProcessor` and passed
 to every downstream stage. No stage should call `nlp()` again.
 
+### FeatureBuilder produces the feature matrix for clustering
+
+`FeatureBuilder.build(articles)` returns a `scipy.sparse.csr_matrix` combining:
+- TF-IDF features (up to 300 unigrams/bigrams from lemmatised text)
+- 6 scaled linguistic features (adj_rate, adv_rate, modal_rate,
+  attribution_rate, passive_rate, ner_rate)
+
+This matrix is the input to `TopicClusterer`. The builder also exposes
+`feature_names` for inspecting which TF-IDF terms and linguistic features
+matter most per cluster.
+
+### TopicClusterer design constraints
+
+- Input: the `csr_matrix` from `FeatureBuilder.build()`, plus a list of
+  `article_id` strings and a list of `news_outlet` strings (for labelling
+  output, not for training — k-means is unsupervised)
+- Must run k-means for a range of k values (2–8) and select best k by
+  silhouette score
+- Output: a `ClusteringResult` dataclass containing:
+  - `assignments: pd.DataFrame` — columns: article_id, news_outlet, cluster
+  - `top_terms: dict[int, list[str]]` — top 10 TF-IDF/linguistic feature
+    names per cluster by mean weight
+  - `silhouette_score: float` — silhouette score for the chosen k
+  - `k: int` — the chosen number of clusters
+- The pipeline writes `assignments` to CSV at
+  `data/intermediate/cluster_assignments.csv`
+- The pipeline writes `top_terms` to CSV at
+  `data/intermediate/cluster_top_terms.csv`
+
 ### SentimentScores is a typed return value
 
 `SentimentScores` (in `sentiment_analyzer.py`) is a dataclass with fields:
-`vader: float`, `sentiwordnet: float`, `nrc: float`. The `score_dataframe`
-backward-compat wrapper maps these to DataFrame column names with `_score`
-suffixes.
+`vader: float`, `sentiwordnet: float`, `nrc: float`.
 
 ### CSV checkpoints are for debugging, not data transfer
 
-The pipeline writes CSVs at each stage for inspection. But in-memory
-`ProcessedArticle` objects are the primary data transfer between stages in
-`pipeline.run()`.
+The pipeline writes CSVs at each stage for inspection. But in-memory objects
+are the primary data transfer between stages in `pipeline.run()`.
 
 ### No abstract base classes unless needed
 
-Use concrete classes and simple composition. Introduce an ABC only when there
-are 3+ interchangeable implementations. Private methods inside a class are fine.
+Use concrete classes and simple composition.
 
 ## Scope boundaries — what Codex must NOT do
 
@@ -119,7 +155,6 @@ are 3+ interchangeable implementations. Private methods inside a class are fine.
 - File naming: `tests/test_<module_name>.py`.
 - Method naming: `test_<method_or_behaviour>_<expected_outcome>`.
 - Use test doubles (fakes) to avoid loading spaCy/NLTK in unit tests.
-  The project pattern: `FakeToken` + `FakeNlp`/`FakeDoc` classes.
 - Run: `python -m pytest tests/ -v` from project root.
 
 ### Naming
@@ -134,7 +169,7 @@ are 3+ interchangeable implementations. Private methods inside a class are fine.
 ### Dependencies
 - spaCy (`en_core_web_sm`) — tokenization, POS, NER, dependency parse.
 - pandas — data transport.
-- scikit-learn — TF-IDF, logistic regression, StandardScaler.
+- scikit-learn — TF-IDF, KMeans, StandardScaler, silhouette_score.
 - NLTK — VADER, SentiWordNet, WordNet.
 - nrclex — NRC emotion lexicon.
 - numpy, scipy — numeric operations, sparse matrices.
@@ -147,14 +182,11 @@ are 3+ interchangeable implementations. Private methods inside a class are fine.
   with hardcoded column names.
 - **Module-level side effects.** No code at import time.
 - **God objects.** Pipeline orchestrates; business logic lives in its own module.
-- **Defensive checks everywhere.** Validate once at the boundary.
 
 ## Files to read before modifying a module
 
-| Changing...                    | Read first                                      |
-|-------------------------------|--------------------------------------------------|
-| `src/preprocessing/`          | `tests/test_article_preprocessor.py`             |
-| `src/sentiment/`              | `src/preprocessing/spacy_processor.py`           |
-| `src/bias/`                   | `src/preprocessing/spacy_processor.py`           |
-| `src/pipeline/news_pipeline.py` | every module in `src/` it imports               |
-| any test file                 | the source file it tests + existing test patterns |
+| Changing...                      | Read first                                       |
+|----------------------------------|--------------------------------------------------|
+| `src/bias/topic_clusterer.py`    | `src/bias/feature_builder.py`                    |
+| `src/pipeline/news_pipeline.py`  | `src/bias/topic_clusterer.py`, `feature_builder.py` |
+| any test file                    | the source file it tests + existing test patterns |

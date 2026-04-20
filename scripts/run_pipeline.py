@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.pipeline.news_pipeline import DEFAULT_SOURCE, NewsPipeline
-from src.comparison.statistical_tests import run_all_tests, format_results
+
 
 
 def _pipeline() -> NewsPipeline:
