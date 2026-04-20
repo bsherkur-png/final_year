@@ -217,6 +217,7 @@ class NewsPipeline:
         self.run_ingestion()
         self.run_extraction()
         filtered_df = self.run_filtering()
+        filtered_df = filtered_df.groupby("news_outlet").filter(lambda g: len(g) >= 6)
 
         # spaCy processes once — result shared by sentiment + clustering
         articles = self.run_preprocessing(filtered_df)
