@@ -113,6 +113,7 @@ class LexiconScorer:
             nrc_surprise=nrc.surprise,
             nrc_anticipation=nrc.anticipation,
             nrc_sadness=nrc.sadness,
+
         )
 
     @staticmethod

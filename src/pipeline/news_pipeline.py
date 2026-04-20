@@ -93,6 +93,14 @@ class NewsPipeline:
         scored["nrc_score"] = scored["article_id"].map(
             lambda aid: scores_by_id[aid].nrc
         )
+        scored["nrc_anger"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_anger)
+        scored["nrc_fear"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_fear)
+        scored["nrc_trust"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_trust)
+        scored["nrc_joy"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_joy)
+        scored["nrc_disgust"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_disgust)
+        scored["nrc_surprise"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_surprise)
+        scored["nrc_anticipation"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_anticipation)
+        scored["nrc_sadness"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_sadness)
 
         return scored
 
@@ -163,6 +171,14 @@ class NewsPipeline:
             "vader_score",
             "sentiwordnet_score",
             "nrc_score",
+            "nrc_anger",
+            "nrc_fear",
+            "nrc_trust",
+            "nrc_joy",
+            "nrc_disgust",
+            "nrc_surprise",
+            "nrc_anticipation",
+            "nrc_sadness",
         ]
         missing_columns = [column for column in final_columns if column not in scored_df.columns]
         if missing_columns:
