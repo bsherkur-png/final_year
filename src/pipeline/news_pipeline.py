@@ -5,7 +5,7 @@ import pandas as pd
 from scripts.ingestion.build_master_csv import build_master_csv
 from src.comparison.outlet_comparator import summarize_outlets
 from src.extraction.web_extractor import WebExtractor
-from src.preprocessing.article_preprocessor import filter_shamima_mentions
+from src.preprocessing.filters import filter_shamima_mentions
 from src.preprocessing.spacy_processor import SpacyProcessor, ProcessedArticle
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer, SentimentScores
 from src.bias.feature_builder import FeatureBuilder

@@ -1,6 +1,6 @@
 """Preprocessing utilities."""
 
-from src.preprocessing.article_preprocessor import ArticlePreprocessor
+from src.preprocessing.filters import filter_shamima_mentions
 
 
-__all__ = ["ArticlePreprocessor"]
+__all__ = ["filter_shamima_mentions"]
