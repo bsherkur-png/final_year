@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from pathlib import Path
 
 import pandas as pd
@@ -43,29 +44,23 @@ class NewsPipeline:
         df: pd.DataFrame,
     ) -> pd.DataFrame:
         scorer = LexiconScorer()
-        scored = df.copy()
 
         scores_by_id: dict[str, SentimentScores] = {}
         for article in articles:
             scores_by_id[article.article_id] = scorer.score_article(article)
 
-        scored["vader_score"] = scored["article_id"].map(
-            lambda aid: scores_by_id[aid].vader
+        scores_rows = {aid: asdict(scores) for aid, scores in scores_by_id.items()}
+        scores_df = pd.DataFrame.from_dict(scores_rows, orient="index")
+        scores_df.index.name = "article_id"
+
+        scored = df.set_index("article_id").join(scores_df).reset_index()
+        scored = scored.rename(
+            columns={
+                "vader": "vader_score",
+                "sentiwordnet": "sentiwordnet_score",
+                "nrc": "nrc_score",
+            }
         )
-        scored["sentiwordnet_score"] = scored["article_id"].map(
-            lambda aid: scores_by_id[aid].sentiwordnet
-        )
-        scored["nrc_score"] = scored["article_id"].map(
-            lambda aid: scores_by_id[aid].nrc
-        )
-        scored["nrc_anger"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_anger)
-        scored["nrc_fear"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_fear)
-        scored["nrc_trust"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_trust)
-        scored["nrc_joy"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_joy)
-        scored["nrc_disgust"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_disgust)
-        scored["nrc_surprise"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_surprise)
-        scored["nrc_anticipation"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_anticipation)
-        scored["nrc_sadness"] = scored["article_id"].map(lambda aid: scores_by_id[aid].nrc_sadness)
 
         return scored
 
