@@ -13,9 +13,11 @@ class ProcessedArticle:
     doc: spacy.tokens.Doc
 
     @property
-    def minimal_text(self) -> str:
-        """Return minimally cleaned text for VADER scoring."""
-        return self.raw_text.strip()
+    def vader_text(self) -> str:
+        """Whitespace-normalised raw text for VADER. No other preprocessing."""
+        import re
+
+        return re.sub(r"\s+", " ", self.raw_text).strip()
 
     @property
     def lemmas(self) -> list[str]:

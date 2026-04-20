@@ -104,7 +104,7 @@ class NewsPipeline:
             rows.append(
                 {
                     "article_id": a.article_id,
-                    "minimal_body_text": a.minimal_text,
+                    "vader_text": a.vader_text,
                     "lemmas": " ".join(a.lemmas),
                 }
             )

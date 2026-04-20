@@ -1,5 +1,4 @@
 from dataclasses import dataclass, fields
-import re
 
 from src.preprocessing.spacy_processor import ProcessedArticle
 
@@ -50,12 +49,11 @@ class LexiconScorer:
         self.sentiwordnet = swn
 
     def score_vader(self, text: str) -> float:
-        """Return a raw VADER score for minimally preprocessed text."""
-        normalized_text = self._normalise_text(text)
-        if not normalized_text:
+        """Return VADER compound score for pre-normalised text."""
+        if not text:
             return 0.0
 
-        scores = self.vader.polarity_scores(normalized_text)
+        scores = self.vader.polarity_scores(text)
         return float(scores["compound"])
 
     def score_sentiwordnet(self, tokens: list[str]) -> float:
@@ -101,7 +99,7 @@ class LexiconScorer:
         """Return the three raw lexicon scores for one article."""
         nrc = self.score_nrc(article.lemmas)
         return SentimentScores(
-            vader=self.score_vader(article.minimal_text),
+            vader=self.score_vader(article.vader_text),
             sentiwordnet=self.score_sentiwordnet(article.lemmas),
 
             nrc=nrc.positive - nrc.negative,
@@ -115,14 +113,6 @@ class LexiconScorer:
             nrc_sadness=nrc.sadness,
 
         )
-
-    @staticmethod
-    def _normalise_text(text: str) -> str:
-        """Clean extra whitespace before scoring."""
-        if text is None:
-            return ""
-
-        return re.sub(r"\s+", " ", str(text)).strip()
 
     def _lookup_sentiwordnet_score(self, token: str) -> float | None:
         """Return a simple SentiWordNet score for one token."""
