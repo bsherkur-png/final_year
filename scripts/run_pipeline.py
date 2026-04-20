@@ -35,8 +35,6 @@ MENU = """
 
   Analysis
   --------
-  7. Run statistical tests (Kruskal-Wallis + Mann-Whitney)
-
   0. Exit
 """
 
@@ -97,16 +95,6 @@ def run_outlet_comparison():
     print("Outlet comparison complete.")
 
 
-def run_statistical_tests():
-    pipeline = _pipeline()
-    if not _check_file(pipeline.config.raw_sentiment_output, "Sentiment scores"):
-        return
-
-    df = pd.read_csv(pipeline.config.raw_sentiment_output)
-    results = run_all_tests(df)
-    print(format_results(results))
-
-
 ACTIONS = {
     "1": run_full_pipeline,
     "2": run_ingestion,
@@ -114,7 +102,6 @@ ACTIONS = {
     "4": run_filtering,
     "5": run_analysis_stages,
     "6": run_outlet_comparison,
-    "7": run_statistical_tests,
 }
 
 
