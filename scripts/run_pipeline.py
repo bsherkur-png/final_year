@@ -2,9 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.pipeline.config import PipelineConfig
 from src.pipeline.news_pipeline import NewsPipeline
-
 
 
 def _pipeline() -> NewsPipeline:
@@ -19,6 +17,15 @@ def _check_file(path: Path, label: str) -> bool:
     return False
 
 
+def _load_filtered_df(pipeline: NewsPipeline) -> pd.DataFrame | None:
+    """Read the filtered CSV and apply the minimum-articles-per-outlet filter."""
+    if not _check_file(pipeline.config.extraction_output, "Filtered articles"):
+        return None
+    filtered_df = pd.read_csv(pipeline.config.extraction_output)
+    filtered_df = filtered_df.groupby("news_outlet").filter(lambda g: len(g) >= 6)
+    return filtered_df
+
+
 MENU = """
 ========================================
   Shamima Begum — News Analysis Pipeline
@@ -30,11 +37,10 @@ MENU = """
   2. Run ingestion only
   3. Run extraction only
   4. Run filtering only
-  5. Run preprocessing + sentiment + clustering
-  6. Run outlet comparison only
+  5. Run preprocessing + sentiment
+  6. Run clustering only
+  7. Run outlet comparison only
 
-  Analysis
-  --------
   0. Exit
 """
 
@@ -67,14 +73,12 @@ def run_filtering():
     print(f"Filtering complete. {len(df)} articles remain.")
 
 
-def run_analysis_stages():
-    """Run preprocessing, sentiment, and clustering from the filtered CSV."""
+def run_preprocessing_and_sentiment():
+    """Run preprocessing and sentiment scoring from the filtered CSV."""
     pipeline = _pipeline()
-    if not _check_file(pipeline.config.extraction_output, "Filtered articles"):
+    filtered_df = _load_filtered_df(pipeline)
+    if filtered_df is None:
         return
-
-    filtered_df = pd.read_csv(pipeline.config.extraction_output)
-    filtered_df = filtered_df.groupby("news_outlet").filter(lambda g: len(g) >= 6)
 
     print(f"Processing {len(filtered_df)} articles...")
     articles = pipeline.run_preprocessing(filtered_df)
@@ -83,6 +87,17 @@ def run_analysis_stages():
     raw_df = pipeline.run_raw_sentiment(articles, filtered_df)
     pipeline.run_scaled_sentiment(raw_df)
     print("Sentiment scoring complete.")
+
+
+def run_clustering():
+    """Run clustering from the filtered CSV."""
+    pipeline = _pipeline()
+    filtered_df = _load_filtered_df(pipeline)
+    if filtered_df is None:
+        return
+
+    print(f"Processing {len(filtered_df)} articles for clustering...")
+    articles = pipeline.run_preprocessing(filtered_df)
 
     result = pipeline.run_clustering(articles, filtered_df)
     print(f"Clustering complete. k={result.k}, silhouette={result.silhouette_score:.4f}")
@@ -101,8 +116,9 @@ ACTIONS = {
     "2": run_ingestion,
     "3": run_extraction,
     "4": run_filtering,
-    "5": run_analysis_stages,
-    "6": run_outlet_comparison,
+    "5": run_preprocessing_and_sentiment,
+    "6": run_clustering,
+    "7": run_outlet_comparison,
 }
 
 
