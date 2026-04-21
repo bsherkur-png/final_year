@@ -14,17 +14,18 @@ from src.preprocessing.spacy_processor import SpacyProcessor, ProcessedArticle
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer, SentimentScores
 
 
+def _write_csv(df: pd.DataFrame, destination: Path) -> None:
+    """Write a DataFrame to CSV, creating parent directories if needed."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(destination, index=False)
+
+
 class NewsPipeline:
     def __init__(
         self,
         config: PipelineConfig | None = None,
     ) -> None:
         self.config = config or PipelineConfig()
-
-    @staticmethod
-    def _write_csv(df: pd.DataFrame, destination: Path) -> None:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(destination, index=False)
 
     @staticmethod
     def _resolve_body_column(df: pd.DataFrame) -> str:
@@ -75,7 +76,7 @@ class NewsPipeline:
 
         extracted_df = WebExtractor().extract(master_df)
 
-        self._write_csv(extracted_df, self.config.extraction_raw_output)
+        _write_csv(extracted_df, self.config.extraction_raw_output)
         return extracted_df
 
     def run_filtering(self) -> pd.DataFrame:
@@ -86,7 +87,7 @@ class NewsPipeline:
             text_columns=("title", "body"),
         )
 
-        self._write_csv(filtered_df, self.config.extraction_output)
+        _write_csv(filtered_df, self.config.extraction_output)
         return filtered_df
 
     def run_preprocessing(self, df: pd.DataFrame) -> list[ProcessedArticle]:
@@ -109,7 +110,7 @@ class NewsPipeline:
             checkpoint_df = checkpoint_df.merge(
                 df[["article_id"] + meta_cols], on="article_id", how="left"
             )
-        self._write_csv(checkpoint_df, self.config.preprocess_output)
+        _write_csv(checkpoint_df, self.config.preprocess_output)
 
         return articles
 
@@ -141,7 +142,7 @@ class NewsPipeline:
             raise ValueError(f"Missing required final sentiment columns: {missing_columns}")
 
         final_df = scored_df.loc[:, final_columns]
-        self._write_csv(final_df, self.config.raw_sentiment_output)
+        _write_csv(final_df, self.config.raw_sentiment_output)
         return final_df
 
     def run_scaled_sentiment(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -152,7 +153,7 @@ class NewsPipeline:
         scaled_df[["vader_z", "nrc_z"]] = scaled_df[["vader_score", "nrc_score"]].apply(zscore)
         scaled_df["composite_score"] = scaled_df[["vader_z", "nrc_z"]].mean(axis=1)
 
-        self._write_csv(scaled_df, self.config.scaled_sentiment_output)
+        _write_csv(scaled_df, self.config.scaled_sentiment_output)
         return scaled_df
 
     def run_outlet_comparison(self) -> pd.DataFrame:
@@ -163,7 +164,7 @@ class NewsPipeline:
             polarity_column="composite_score",
         )
 
-        self._write_csv(summary_df, self.config.outlet_comparison_output)
+        _write_csv(summary_df, self.config.outlet_comparison_output)
         return summary_df
 
     def run_clustering(
@@ -184,14 +185,14 @@ class NewsPipeline:
         result = TopicClusterer().run(
             feature_matrix, article_ids, outlets, feature_names
         )
-        self._write_csv(result.assignments, self.config.cluster_assignments_output)
+        _write_csv(result.assignments, self.config.cluster_assignments_output)
         top_terms_df = pd.DataFrame(
             [
                 {"cluster": cluster, "terms": ", ".join(terms)}
                 for cluster, terms in result.top_terms.items()
             ]
         )
-        self._write_csv(top_terms_df, self.config.cluster_top_terms_output)
+        _write_csv(top_terms_df, self.config.cluster_top_terms_output)
 
         return result
 
