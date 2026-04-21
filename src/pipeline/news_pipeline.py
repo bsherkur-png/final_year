@@ -12,6 +12,7 @@ from src.pipeline.config import PipelineConfig
 from src.preprocessing.filters import filter_shamima_mentions
 from src.preprocessing.spacy_processor import SpacyProcessor, ProcessedArticle
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer, SentimentScores
+from src.sentiment.scaling import scale_sentiment
 
 
 def _write_csv(df: pd.DataFrame, destination: Path) -> None:
@@ -135,12 +136,7 @@ class NewsPipeline:
 
     def run_scaled_sentiment(self, df: pd.DataFrame) -> pd.DataFrame:
         """Z-score VADER and NRC polarity, then compute a composite mean."""
-        from scipy.stats import zscore
-
-        scaled_df = df.copy()
-        scaled_df[["vader_z", "nrc_z"]] = scaled_df[["vader_score", "nrc_score"]].apply(zscore)
-        scaled_df["composite_score"] = scaled_df[["vader_z", "nrc_z"]].mean(axis=1)
-
+        scaled_df = scale_sentiment(df)
         _write_csv(scaled_df, self.config.scaled_sentiment_output)
         return scaled_df
 
