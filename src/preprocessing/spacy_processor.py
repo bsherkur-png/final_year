@@ -34,27 +34,6 @@ class ProcessedArticle:
         return self.lemmas
 
     @property
-    def sentiwordnet_tokens(self) -> list[tuple[str, str]]:
-        """Lemma + WordNet POS pairs for SentiWordNet scoring.
-
-        Returns (lemma, wn_pos) tuples where wn_pos is one of
-        'n', 'v', 'a', 'r' (noun, verb, adj, adv). Tokens whose
-        spaCy POS does not map to a WordNet POS are skipped.
-        Stop words, punctuation, and non-alpha tokens are excluded.
-        """
-        _SPACY_TO_WN = {"NOUN": "n", "VERB": "v", "ADJ": "a", "ADV": "r"}
-
-        result = []
-        for token in self.doc:
-            if token.is_stop or token.is_punct or not token.is_alpha:
-                continue
-            wn_pos = _SPACY_TO_WN.get(token.pos_)
-            if wn_pos is None:
-                continue
-            result.append((token.lemma_.lower(), wn_pos))
-        return result
-
-    @property
     def tokens(self) -> list[str]:
         """Return lowercased token text excluding punctuation only."""
         return [token.text.lower() for token in self.doc if not token.is_punct]

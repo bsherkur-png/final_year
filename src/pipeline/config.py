@@ -33,6 +33,10 @@ class PipelineConfig:
         return self.output_dir / "raw_sentiment_articles.csv"
 
     @property
+    def scaled_sentiment_output(self) -> Path:
+        return self.output_dir / "scaled_sentiment_articles.csv"
+
+    @property
     def outlet_comparison_output(self) -> Path:
         return self.output_dir / "outlet_comparison_summary.csv"
 

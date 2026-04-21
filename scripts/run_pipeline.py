@@ -80,7 +80,8 @@ def run_analysis_stages():
     articles = pipeline.run_preprocessing(filtered_df)
     print("Preprocessing complete.")
 
-    pipeline.run_raw_sentiment(articles, filtered_df)
+    raw_df = pipeline.run_raw_sentiment(articles, filtered_df)
+    pipeline.run_scaled_sentiment(raw_df)
     print("Sentiment scoring complete.")
 
     result = pipeline.run_clustering(articles, filtered_df)
@@ -89,7 +90,7 @@ def run_analysis_stages():
 
 def run_outlet_comparison():
     pipeline = _pipeline()
-    if not _check_file(pipeline.config.raw_sentiment_output, "Sentiment scores"):
+    if not _check_file(pipeline.config.scaled_sentiment_output, "Scaled sentiment scores"):
         return
     pipeline.run_outlet_comparison()
     print("Outlet comparison complete.")

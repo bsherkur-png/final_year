@@ -18,10 +18,9 @@ class NrcScores:
 
 @dataclass
 class SentimentScores:
-    """Scores from all three lexicon-based sentiment tools for one article."""
+    """Scores from lexicon-based sentiment tools for one article."""
 
     vader: float
-    sentiwordnet: float
     nrc: float
     nrc_anger: float
     nrc_fear: float
@@ -42,12 +41,8 @@ class LexiconScorer:
     def __init__(self):
         from nrclex import NRCLex
         from nltk.sentiment import SentimentIntensityAnalyzer
-        from nltk.corpus import sentiwordnet as swn
-        from nltk.corpus import wordnet as wn
 
         self.vader = SentimentIntensityAnalyzer()
-        self.wordnet = wn
-        self.sentiwordnet = swn
         self._nrclex = NRCLex()
 
     def score_vader(self, text: str) -> float:
@@ -58,40 +53,25 @@ class LexiconScorer:
         scores = self.vader.polarity_scores(text)
         return float(scores["compound"])
 
-    def score_sentiwordnet(self, tokens: list[tuple[str, str]]) -> float:
-        """Return average SentiWordNet score for (lemma, wn_pos) pairs."""
-        if not tokens:
-            return 0.0
-
-        scores = []
-
-        for lemma, wn_pos in tokens:
-            token_score = self._lookup_sentiwordnet_score(lemma, wn_pos)
-            if token_score is not None:
-                scores.append(token_score)
-
-        if not scores:
-            return 0.0
-
-        return sum(scores) / len(scores)
-
     def score_nrc(self, tokens: list[str]) -> NrcScores:
+        """Return NRC emotion proportions normalised by token count."""
         if not tokens:
             return NrcScores(**{f.name: 0.0 for f in fields(NrcScores)})
 
+        n = len(tokens)
         self._nrclex.load_token_list(tokens)
         e = self._nrclex.raw_emotion_scores
         return NrcScores(
-            positive=float(e.get("positive", 0)),
-            negative=float(e.get("negative", 0)),
-            anger=float(e.get("anger", 0)),
-            fear=float(e.get("fear", 0)),
-            trust=float(e.get("trust", 0)),
-            joy=float(e.get("joy", 0)),
-            disgust=float(e.get("disgust", 0)),
-            surprise=float(e.get("surprise", 0)),
-            anticipation=float(e.get("anticipation", 0)),
-            sadness=float(e.get("sadness", 0)),
+            positive=float(e.get("positive", 0)) / n,
+            negative=float(e.get("negative", 0)) / n,
+            anger=float(e.get("anger", 0)) / n,
+            fear=float(e.get("fear", 0)) / n,
+            trust=float(e.get("trust", 0)) / n,
+            joy=float(e.get("joy", 0)) / n,
+            disgust=float(e.get("disgust", 0)) / n,
+            surprise=float(e.get("surprise", 0)) / n,
+            anticipation=float(e.get("anticipation", 0)) / n,
+            sadness=float(e.get("sadness", 0)) / n,
         )
 
     def score_article(self, article: ProcessedArticle) -> SentimentScores:
@@ -99,8 +79,6 @@ class LexiconScorer:
         nrc = self.score_nrc(article.nrc_tokens)
         return SentimentScores(
             vader=self.score_vader(article.vader_text),
-            sentiwordnet=self.score_sentiwordnet(article.sentiwordnet_tokens),
-
             nrc=nrc.positive - nrc.negative,
             nrc_anger=nrc.anger,
             nrc_fear=nrc.fear,
@@ -112,16 +90,3 @@ class LexiconScorer:
             nrc_sadness=nrc.sadness,
 
         )
-
-    def _lookup_sentiwordnet_score(self, lemma: str, pos: str) -> float | None:
-        """Return SentiWordNet score for a lemma with a specific WordNet POS."""
-        try:
-            synsets = self.wordnet.synsets(lemma, pos=pos)
-        except LookupError:
-            raise
-
-        if not synsets:
-            return None
-
-        senti_synset = self.sentiwordnet.senti_synset(synsets[0].name())
-        return float(senti_synset.pos_score() - senti_synset.neg_score())

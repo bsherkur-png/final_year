@@ -57,7 +57,6 @@ class NewsPipeline:
         scored = scored.rename(
             columns={
                 "vader": "vader_score",
-                "sentiwordnet": "sentiwordnet_score",
                 "nrc": "nrc_score",
             }
         )
@@ -127,7 +126,6 @@ class NewsPipeline:
             "title",
             "date_link",
             "vader_score",
-            "sentiwordnet_score",
             "nrc_score",
             "nrc_anger",
             "nrc_fear",
@@ -146,12 +144,23 @@ class NewsPipeline:
         self._write_csv(final_df, self.config.raw_sentiment_output)
         return final_df
 
+    def run_scaled_sentiment(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Z-score VADER and NRC polarity, then compute a composite mean."""
+        from scipy.stats import zscore
+
+        scaled_df = df.copy()
+        scaled_df[["vader_z", "nrc_z"]] = scaled_df[["vader_score", "nrc_score"]].apply(zscore)
+        scaled_df["composite_score"] = scaled_df[["vader_z", "nrc_z"]].mean(axis=1)
+
+        self._write_csv(scaled_df, self.config.scaled_sentiment_output)
+        return scaled_df
+
     def run_outlet_comparison(self) -> pd.DataFrame:
-        sentiment_df = pd.read_csv(self.config.raw_sentiment_output)
+        sentiment_df = pd.read_csv(self.config.scaled_sentiment_output)
 
         summary_df = summarize_outlets(
             sentiment_df,
-            polarity_column="vader_score",
+            polarity_column="composite_score",
         )
 
         self._write_csv(summary_df, self.config.outlet_comparison_output)
@@ -195,7 +204,8 @@ class NewsPipeline:
         # spaCy processes once — result shared by sentiment + clustering
         articles = self.run_preprocessing(filtered_df)
 
-        sentiment_df = self.run_raw_sentiment(articles, filtered_df)
+        raw_df = self.run_raw_sentiment(articles, filtered_df)
+        scaled_df = self.run_scaled_sentiment(raw_df)
         self.run_clustering(articles, filtered_df)
         self.run_outlet_comparison()
-        return sentiment_df
+        return scaled_df
