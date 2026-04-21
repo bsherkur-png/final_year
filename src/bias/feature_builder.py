@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 
-import numpy as np
-from scipy.sparse import csr_matrix, hstack
+import pandas as pd
+from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.preprocessing import StandardScaler
 
 from src.preprocessing.spacy_processor import ProcessedArticle
 
@@ -28,6 +27,80 @@ PASSIVE_DEPS = frozenset({"nsubjpass", "auxpass"})
 
 TARGET_ENTITY_LABELS = frozenset({"PERSON", "ORG", "GPE"})
 
+WEB_BOILERPLATE = frozenset(
+    {
+        # Image/media captions and embeds
+        "image",
+        "picture",
+        "video",
+        "play",
+        "watch",
+        "caption",
+        "getty",
+        "getty images",
+        "pa",
+        "reuters",
+        "afp",
+        "epa",
+        "source",
+        "credit",
+        "copyright",
+        # Social and sharing widgets
+        "share",
+        "facebook",
+        "twitter",
+        "whatsapp",
+        "email",
+        "comment",
+        "comments",
+        "like",
+        "follow",
+        "subscribe",
+        # Navigation and layout
+        "card",
+        "target",
+        "range",
+        "skip",
+        "menu",
+        "search",
+        "cookie",
+        "cookies",
+        "accept",
+        "privacy",
+        "policy",
+        "sign",
+        "log",
+        "register",
+        "newsletter",
+        # Related content and cross-promotion
+        "read",
+        "related",
+        "stories",
+        "topic",
+        "topics",
+        "advertisement",
+        "sponsored",
+        "ad",
+        # Broadcast boilerplate
+        "itv",
+        "morning",
+        "bbc radio",
+        "channel",
+        # UI elements
+        "click",
+        "tap",
+        "swipe",
+        "close",
+        "open",
+        "view",
+        "more",
+        "show",
+        "hide",
+        "expand",
+        "bbc"
+    }
+)
+
 
 @dataclass
 class ArticleFeatures:
@@ -42,10 +115,10 @@ class ArticleFeatures:
 
 
 class FeatureBuilder:
-    """Build combined TF-IDF and linguistic feature matrices."""
+    """Build TF-IDF feature matrices and linguistic descriptive profiles."""
 
     def __init__(self, max_tfidf_features: int = 300):
-        """Initialize vectorizer and scaler for feature extraction."""
+        """Initialize vectorizer for feature extraction."""
         self._tfidf = TfidfVectorizer(
             tokenizer=lambda x: x,
             preprocessor=lambda x: x,
@@ -53,58 +126,51 @@ class FeatureBuilder:
             lowercase=False,
             max_features=max_tfidf_features,
             ngram_range=(1, 2),
+            max_df=0.5,
+            min_df=3,
         )
-        self._scaler = StandardScaler()
         self._is_fitted = False
 
+    @staticmethod
+    def _filter_boilerplate(tokens: list[str]) -> list[str]:
+        """Remove known web boilerplate terms from a token list."""
+        return [t for t in tokens if t not in WEB_BOILERPLATE]
+
     def build(self, articles: list[ProcessedArticle]) -> csr_matrix:
-        """Fit TF-IDF + linguistic features and return a combined sparse matrix."""
+        """Fit TF-IDF and return the document-term matrix."""
         if len(articles) < 2:
             raise ValueError(
                 f"Need at least 2 articles for TF-IDF; got {len(articles)}."
             )
 
-        corpus = [article.lemmas for article in articles]
+        corpus = [self._filter_boilerplate(article.lemmas) for article in articles]
         tfidf_matrix = self._tfidf.fit_transform(corpus)
 
-        linguistic_rows = [self._extract_linguistic(article) for article in articles]
-        linguistic_array = np.array(
-            [
-                [
-                    features.adj_rate,
-                    features.adv_rate,
-                    features.modal_rate,
-                    features.attribution_rate,
-                    features.passive_rate,
-                    features.ner_rate,
-                ]
-                for features in linguistic_rows
-            ]
-        )
-        linguistic_scaled = self._scaler.fit_transform(linguistic_array)
-
-        linguistic_sparse = csr_matrix(linguistic_scaled)
-        combined = hstack([tfidf_matrix, linguistic_sparse], format="csr")
-
         self._is_fitted = True
-        return combined
+        return tfidf_matrix
 
     @property
     def feature_names(self) -> list[str]:
-        """Return fitted TF-IDF feature names followed by six linguistic names."""
+        """Return fitted TF-IDF feature names."""
         if not self._is_fitted:
             raise RuntimeError("Call build() before accessing feature_names.")
+        return list(self._tfidf.get_feature_names_out())
 
-        tfidf_names = list(self._tfidf.get_feature_names_out())
-        linguistic_names = [
-            "adj_rate",
-            "adv_rate",
-            "modal_rate",
-            "attribution_rate",
-            "passive_rate",
-            "ner_rate",
-        ]
-        return tfidf_names + linguistic_names
+    def linguistic_profile(self, articles: list[ProcessedArticle]) -> pd.DataFrame:
+        """Compute six linguistic rates per article as a DataFrame."""
+        rows = []
+        for article in articles:
+            features = self._extract_linguistic(article)
+            rows.append({
+                "article_id": article.article_id,
+                "adj_rate": features.adj_rate,
+                "adv_rate": features.adv_rate,
+                "modal_rate": features.modal_rate,
+                "attribution_rate": features.attribution_rate,
+                "passive_rate": features.passive_rate,
+                "ner_rate": features.ner_rate,
+            })
+        return pd.DataFrame(rows)
 
     def _extract_linguistic(self, article: ProcessedArticle) -> ArticleFeatures:
         """Extract six linguistic rates from one processed article."""

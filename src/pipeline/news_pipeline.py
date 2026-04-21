@@ -105,8 +105,6 @@ class NewsPipeline:
         final_columns = [
             "article_id",
             "news_outlet",
-            "title",
-            "date_link",
             "vader_score",
             "nrc_score",
             "nrc_anger",
@@ -129,7 +127,12 @@ class NewsPipeline:
     def run_scaled_sentiment(self, df: pd.DataFrame) -> pd.DataFrame:
         """Z-score VADER and NRC polarity, then compute a composite mean."""
         scaled_df = scale_sentiment(df)
-        _write_csv(scaled_df, self.config.scaled_sentiment_output)
+
+        checkpoint_columns = [
+            c for c in scaled_df.columns
+            if c not in ("title", "date_link", "vader_score", "nrc_score")
+        ]
+        _write_csv(scaled_df[checkpoint_columns], self.config.scaled_sentiment_output)
         return scaled_df
 
     def run_outlet_comparison(self) -> pd.DataFrame:
@@ -161,6 +164,8 @@ class NewsPipeline:
         result = TopicClusterer().run(
             feature_matrix, article_ids, outlets, feature_names
         )
+        ling_df = builder.linguistic_profile(articles)
+        result.assignments = result.assignments.merge(ling_df, on="article_id", how="left")
         _write_csv(result.assignments, self.config.cluster_assignments_output)
         top_terms_df = pd.DataFrame(
             [
