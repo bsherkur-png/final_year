@@ -1,4 +1,3 @@
-from dataclasses import asdict
 from pathlib import Path
 
 import pandas as pd
@@ -11,7 +10,7 @@ from src.extraction.web_extractor import WebExtractor
 from src.pipeline.config import PipelineConfig
 from src.preprocessing.filters import filter_shamima_mentions
 from src.preprocessing.spacy_processor import SpacyProcessor, ProcessedArticle
-from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer, SentimentScores
+from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer
 from src.sentiment.scaling import scale_sentiment
 
 
@@ -34,14 +33,7 @@ class NewsPipeline:
         df: pd.DataFrame,
     ) -> pd.DataFrame:
         scorer = LexiconScorer()
-
-        scores_by_id: dict[str, SentimentScores] = {}
-        for article in articles:
-            scores_by_id[article.article_id] = scorer.score_article(article)
-
-        scores_rows = {aid: asdict(scores) for aid, scores in scores_by_id.items()}
-        scores_df = pd.DataFrame.from_dict(scores_rows, orient="index")
-        scores_df.index.name = "article_id"
+        scores_df = scorer.score_all(articles)
 
         scored = df.set_index("article_id").join(scores_df).reset_index()
         scored = scored.rename(

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, fields
 
 from src.preprocessing.spacy_processor import ProcessedArticle
@@ -90,3 +92,16 @@ class LexiconScorer:
             nrc_sadness=nrc.sadness,
 
         )
+
+    def score_all(self, articles: list[ProcessedArticle]) -> pd.DataFrame:
+        """Score all articles and return a DataFrame indexed by article_id."""
+        import pandas as pd
+        from dataclasses import asdict
+
+        rows = {
+            article.article_id: asdict(self.score_article(article))
+            for article in articles
+        }
+        scores_df = pd.DataFrame.from_dict(rows, orient="index")
+        scores_df.index.name = "article_id"
+        return scores_df
