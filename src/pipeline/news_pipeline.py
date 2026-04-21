@@ -8,7 +8,7 @@ from src.bias.topic_clusterer import TopicClusterer, ClusteringResult
 from src.comparison.outlet_comparator import summarize_outlets
 from src.extraction.web_extractor import WebExtractor
 from src.pipeline.config import PipelineConfig
-from src.preprocessing.filters import filter_shamima_mentions
+from src.preprocessing.filters import filter_shamima_mentions, filter_short_articles
 from src.preprocessing.spacy_processor import SpacyProcessor, ProcessedArticle
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer
 from src.sentiment.scaling import scale_sentiment
@@ -67,6 +67,7 @@ class NewsPipeline:
             min_mentions=2,
             text_columns=("title", "body"),
         )
+        filtered_df = filter_short_articles(filtered_df, min_words=250)
 
         _write_csv(filtered_df, self.config.extraction_output)
         return filtered_df

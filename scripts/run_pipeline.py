@@ -4,7 +4,6 @@ import pandas as pd
 
 from src.pipeline.news_pipeline import NewsPipeline
 
-
 def _pipeline() -> NewsPipeline:
     return NewsPipeline()
 
