@@ -33,12 +33,6 @@ class ProcessedArticle:
         """Lowercased lemmas for NRC scoring. Stop words and non-alpha removed."""
         return self.lemmas
 
-    @property
-    def tokens(self) -> list[str]:
-        """Return lowercased token text excluding punctuation only."""
-        return [token.text.lower() for token in self.doc if not token.is_punct]
-
-
 class SpacyProcessor:
     """Wrapper around spaCy that emits ProcessedArticle objects."""
 

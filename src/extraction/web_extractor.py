@@ -123,5 +123,3 @@ class WebExtractor:
             ],
         ]
 
-
-Extractor = WebExtractor
