@@ -51,6 +51,14 @@ class SpacyProcessor:
 
             self._nlp = spacy.load("en_core_web_sm")
 
+    @staticmethod
+    def _resolve_body_column(df: pd.DataFrame) -> str:
+        """Identify the body text column from known candidates."""
+        for candidate in ("body", "original_body_text", "text", "content"):
+            if candidate in df.columns:
+                return candidate
+        raise ValueError(f"No body column found. Available: {list(df.columns)}")
+
     def process(self, article_id: str, raw_text: str) -> ProcessedArticle:
         """Process one article body into a ProcessedArticle."""
         text = (
@@ -64,10 +72,16 @@ class SpacyProcessor:
             doc=self._nlp(text),
         )
 
-    def process_dataframe(self, df: pd.DataFrame, body_column: str = "body") -> list[ProcessedArticle]:
+    def process_dataframe(
+        self, df: pd.DataFrame, body_column: str | None = None
+    ) -> list[ProcessedArticle]:
         """Process a dataframe into a list of ProcessedArticle objects."""
         if "article_id" not in df.columns:
             raise ValueError("Missing required column: article_id")
+
+        if body_column is None:
+            body_column = self._resolve_body_column(df)
+
         if body_column not in df.columns:
             raise ValueError(f"Missing required column: {body_column}")
 

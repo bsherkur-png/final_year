@@ -27,18 +27,6 @@ class NewsPipeline:
     ) -> None:
         self.config = config or PipelineConfig()
 
-    @staticmethod
-    def _resolve_body_column(df: pd.DataFrame) -> str:
-        for candidate in ("body", "original_body_text", "text", "content"):
-            if candidate in df.columns:
-                return candidate
-        raise ValueError(f"No body column found. Available: {list(df.columns)}")
-
-    def _process_with_spacy(self, df: pd.DataFrame) -> list[ProcessedArticle]:
-        body_column = self._resolve_body_column(df)
-        processor = SpacyProcessor()
-        return processor.process_dataframe(df, body_column=body_column)
-
     def _score_sentiment(
         self,
         articles: list[ProcessedArticle],
@@ -91,7 +79,7 @@ class NewsPipeline:
         return filtered_df
 
     def run_preprocessing(self, df: pd.DataFrame) -> list[ProcessedArticle]:
-        articles = self._process_with_spacy(df)
+        articles = SpacyProcessor().process_dataframe(df)
 
         # CSV checkpoint — write a flat version for debugging/inspection
         rows = []
