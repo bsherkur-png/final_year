@@ -165,8 +165,6 @@ class NewsPipeline:
         result = TopicClusterer().run(
             feature_matrix, article_ids, outlets, feature_names
         )
-        ling_df = builder.linguistic_profile(articles)
-        result.assignments = result.assignments.merge(ling_df, on="article_id", how="left")
         _write_csv(result.assignments, self.config.cluster_assignments_output)
         top_terms_df = pd.DataFrame(
             [
