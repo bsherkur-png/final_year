@@ -22,7 +22,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--input",
         type=Path,
-        default=project_root / "data" / "raw" / "news_meta_data.csv",
+        default=project_root / "data" / "raw" / "review_sheet.csv",
         help="Path to input CSV.",
     )
     parser.add_argument(

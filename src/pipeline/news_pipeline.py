@@ -8,7 +8,7 @@ from src.bias.topic_clusterer import TopicClusterer, ClusteringResult
 from src.comparison.outlet_comparator import summarize_outlets
 from src.extraction.web_extractor import WebExtractor
 from src.pipeline.config import PipelineConfig
-from src.preprocessing.filters import filter_shamima_mentions, filter_short_articles
+from src.preprocessing.filters import filter_shamima_mentions, filter_short_articles, tag_events
 from src.preprocessing.spacy_processor import SpacyProcessor, ProcessedArticle
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer
 from src.sentiment.scaling import scale_sentiment
@@ -68,6 +68,7 @@ class NewsPipeline:
             text_columns=("title", "body"),
         )
         filtered_df = filter_short_articles(filtered_df, min_words=250)
+        filtered_df = tag_events(filtered_df)
 
         _write_csv(filtered_df, self.config.extraction_output)
         return filtered_df
@@ -87,7 +88,7 @@ class NewsPipeline:
             )
         checkpoint_df = pd.DataFrame(rows)
         # Merge metadata from the input df so the checkpoint is self-contained
-        meta_cols = [c for c in ("news_outlet", "title", "date_link") if c in df.columns]
+        meta_cols = [c for c in ("news_outlet", "title", "date_link", "event_id") if c in df.columns]
         if meta_cols:
             checkpoint_df = checkpoint_df.merge(
                 df[["article_id"] + meta_cols], on="article_id", how="left"
@@ -106,6 +107,7 @@ class NewsPipeline:
         final_columns = [
             "article_id",
             "news_outlet",
+            "event_id",
             "vader_score",
             "nrc_score",
             "nrc_anger",
@@ -117,9 +119,14 @@ class NewsPipeline:
             "nrc_anticipation",
             "nrc_sadness",
         ]
-        missing_columns = [column for column in final_columns if column not in scored_df.columns]
+        optional = {"event_id"}
+        missing_columns = [
+            column for column in final_columns
+            if column not in scored_df.columns and column not in optional
+        ]
         if missing_columns:
             raise ValueError(f"Missing required final sentiment columns: {missing_columns}")
+        final_columns = [c for c in final_columns if c in scored_df.columns]
 
         final_df = scored_df.loc[:, final_columns]
         _write_csv(final_df, self.config.raw_sentiment_output)
