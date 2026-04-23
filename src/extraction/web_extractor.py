@@ -87,9 +87,10 @@ class WebExtractor:
             lambda value: "" if pd.isna(value) else str(value)
         )
 
+        date_cols = ["date"] if "date" in extracted_df.columns else []
         extracted_df = extracted_df.loc[
             :,
-            ["article_id", "news_outlet", "title", "date_link", "body"],
+            ["article_id", "news_outlet", "title", "date_link"] + date_cols + ["body"],
         ]
         extracted_df = extracted_df.set_index("article_id", drop=False)
         extracted_df["fetch_status"] = "ok"
@@ -110,16 +111,16 @@ class WebExtractor:
                 extracted_df.at[article_id, "fetch_error"] = str(exc)
                 extracted_df.at[article_id, "body"] = ""
 
-        return extracted_df.reset_index(drop=True).loc[
-            :,
-            [
-                "article_id",
-                "news_outlet",
-                "title",
-                "date_link",
-                "body",
-                "fetch_status",
-                "fetch_error",
-            ],
+        final_cols = [
+            "article_id",
+            "news_outlet",
+            "title",
+            "date_link",
+            "date",
+            "body",
+            "fetch_status",
+            "fetch_error",
         ]
+        final_cols = [c for c in final_cols if c in extracted_df.columns]
+        return extracted_df.reset_index(drop=True).loc[:, final_cols]
 

@@ -8,9 +8,10 @@ from src.bias.topic_clusterer import TopicClusterer, ClusteringResult
 from src.comparison.outlet_comparator import summarize_outlets
 from src.extraction.web_extractor import WebExtractor
 from src.pipeline.config import PipelineConfig
-from src.preprocessing.filters import filter_shamima_mentions, filter_short_articles, tag_events
+from src.preprocessing.filters import filter_shamima_mentions, filter_short_articles, filter_opinion_pieces
 from src.preprocessing.spacy_processor import SpacyProcessor, ProcessedArticle
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer
+from src.sentiment.zeroshot_scorer import ZeroshotScorer
 from src.sentiment.scaling import scale_sentiment
 
 
@@ -33,16 +34,15 @@ class NewsPipeline:
         df: pd.DataFrame,
     ) -> pd.DataFrame:
         scorer = LexiconScorer()
-        scores_df = scorer.score_all(articles)
+        lexicon_df = scorer.score_all(articles)
 
-        scored = df.set_index("article_id").join(scores_df).reset_index()
+        scored = df.set_index("article_id").join(lexicon_df).reset_index()
         scored = scored.rename(
             columns={
                 "vader": "vader_score",
                 "nrc": "nrc_score",
             }
         )
-
         return scored
 
     def run_ingestion(self) -> pd.DataFrame:
@@ -68,7 +68,7 @@ class NewsPipeline:
             text_columns=("title", "body"),
         )
         filtered_df = filter_short_articles(filtered_df, min_words=250)
-        filtered_df = tag_events(filtered_df)
+        filtered_df = filter_opinion_pieces(filtered_df)
 
         _write_csv(filtered_df, self.config.extraction_output)
         return filtered_df
@@ -88,7 +88,7 @@ class NewsPipeline:
             )
         checkpoint_df = pd.DataFrame(rows)
         # Merge metadata from the input df so the checkpoint is self-contained
-        meta_cols = [c for c in ("news_outlet", "title", "date_link", "event_id") if c in df.columns]
+        meta_cols = [c for c in ("news_outlet", "title", "date_link") if c in df.columns]
         if meta_cols:
             checkpoint_df = checkpoint_df.merge(
                 df[["article_id"] + meta_cols], on="article_id", how="left"
@@ -107,7 +107,7 @@ class NewsPipeline:
         final_columns = [
             "article_id",
             "news_outlet",
-            "event_id",
+            "zeroshot_score",
             "vader_score",
             "nrc_score",
             "nrc_anger",
@@ -119,7 +119,7 @@ class NewsPipeline:
             "nrc_anticipation",
             "nrc_sadness",
         ]
-        optional = {"event_id"}
+        optional = {"zeroshot_score"}
         missing_columns = [
             column for column in final_columns
             if column not in scored_df.columns and column not in optional
@@ -132,13 +132,38 @@ class NewsPipeline:
         _write_csv(final_df, self.config.raw_sentiment_output)
         return final_df
 
+    def run_zeroshot_sentiment(
+        self,
+        articles: list[ProcessedArticle],
+        df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """Run zero-shot classification and merge scores into the raw sentiment CSV."""
+        zeroshot = ZeroshotScorer()
+        zeroshot_df = zeroshot.score_all(articles)
+
+        if not self.config.raw_sentiment_output.exists():
+            raise ValueError(
+                "Raw sentiment CSV not found. Run lexicon sentiment first."
+            )
+
+        raw_df = pd.read_csv(self.config.raw_sentiment_output)
+        raw_df = raw_df.set_index("article_id").join(
+            zeroshot_df.rename(columns={"zeroshot": "zeroshot_score"})
+        ).reset_index()
+
+        _write_csv(raw_df, self.config.raw_sentiment_output)
+        return raw_df
+
     def run_scaled_sentiment(self, df: pd.DataFrame) -> pd.DataFrame:
         """Z-score VADER and NRC polarity, then compute a composite mean."""
-        scaled_df = scale_sentiment(df)
+        polarity_cols = ["vader_score", "nrc_score"]
+        if "zeroshot_score" in df.columns:
+            polarity_cols.append("zeroshot_score")
+        scaled_df = scale_sentiment(df, polarity_columns=polarity_cols)
 
         checkpoint_columns = [
             c for c in scaled_df.columns
-            if c not in ("title", "date_link", "vader_score", "nrc_score")
+            if c not in ("title", "date_link", "vader_score", "nrc_score", "zeroshot_score")
         ]
         _write_csv(scaled_df[checkpoint_columns], self.config.scaled_sentiment_output)
         return scaled_df

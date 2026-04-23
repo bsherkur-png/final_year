@@ -36,9 +36,10 @@ MENU = """
   2. Run ingestion only
   3. Run extraction only
   4. Run filtering only
-  5. Run preprocessing + sentiment
-  6. Run clustering only
-  7. Run outlet comparison only
+  5. Run preprocessing + lexicon sentiment
+  6. Run zero-shot sentiment (slow, run after 5)
+  7. Run clustering only
+  8. Run outlet comparison only
 
   0. Exit
 """
@@ -88,6 +89,24 @@ def run_preprocessing_and_sentiment():
     print("Sentiment scoring complete.")
 
 
+def run_zeroshot():
+    """Run zero-shot sentiment scoring on already-preprocessed articles."""
+    pipeline = _pipeline()
+    filtered_df = _load_filtered_df(pipeline)
+    if filtered_df is None:
+        return
+    if not _check_file(pipeline.config.raw_sentiment_output, "Raw sentiment CSV"):
+        print("  Run option 5 (preprocessing + sentiment) first.")
+        return
+
+    print(f"Running zero-shot classification on {len(filtered_df)} articles...")
+    print("  (This may take 15-25 minutes on CPU)")
+    articles = pipeline.run_preprocessing(filtered_df)
+    raw_df = pipeline.run_zeroshot_sentiment(articles, filtered_df)
+    pipeline.run_scaled_sentiment(raw_df)
+    print("Zero-shot scoring complete.")
+
+
 def run_clustering():
     """Run clustering from the filtered CSV."""
     pipeline = _pipeline()
@@ -116,8 +135,9 @@ ACTIONS = {
     "3": run_extraction,
     "4": run_filtering,
     "5": run_preprocessing_and_sentiment,
-    "6": run_clustering,
-    "7": run_outlet_comparison,
+    "6": run_zeroshot,
+    "7": run_clustering,
+    "8": run_outlet_comparison,
 }
 
 
