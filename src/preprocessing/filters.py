@@ -49,7 +49,7 @@ def filter_short_articles(
 
 def tag_events(
     df: pd.DataFrame,
-    date_column: str = "date_link",
+    date_column: str = "date",
     text_columns: tuple[str, ...] = ("title", "body"),
 ) -> pd.DataFrame:
     """Tag each article with an event_id using date windows and keyword hits."""
