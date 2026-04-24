@@ -49,6 +49,10 @@ class PipelineConfig:
         return self.output_dir / "dunns_posthoc_pvalues.csv"
 
     @property
+    def wilcoxon_output(self) -> Path:
+        return self.output_dir / "wilcoxon_result.csv"
+
+    @property
     def cluster_assignments_output(self) -> Path:
         return self.output_dir / "cluster_assignments.csv"
 

@@ -1,5 +1,6 @@
 """Non-parametric statistical tests for outlet sentiment comparison."""
 
+import numpy as np
 import pandas as pd
 import scikit_posthocs as sp
 import scipy.stats as stats
@@ -7,7 +8,7 @@ import scipy.stats as stats
 
 def kruskal_wallis(
     df: pd.DataFrame,
-    score_column: str = "composite_score",
+    score_column: str = "zeroshot_z",
     group_column: str = "news_outlet",
 ) -> dict[str, float | int]:
     """Run a Kruskal-Wallis H-test across outlet groups."""
@@ -37,7 +38,7 @@ def kruskal_wallis(
 
 def dunns_posthoc(
     df: pd.DataFrame,
-    score_column: str = "composite_score",
+    score_column: str = "zeroshot_z",
     group_column: str = "news_outlet",
     p_adjust: str = "bonferroni",
 ) -> pd.DataFrame:
@@ -75,3 +76,36 @@ def effect_sizes(
         label = "large"
 
     return {"epsilon_squared": epsilon_sq, "label": label}
+
+
+def wilcoxon_signed_rank(
+    df: pd.DataFrame,
+    col_a: str = "vader_z",
+    col_b: str = "zeroshot_z",
+) -> dict[str, float]:
+    """Wilcoxon signed-rank test for paired z-scored sentiment columns.
+
+    Tests whether the two models produce systematically different
+    scores on the same articles.
+
+    Returns dict with keys: W, p, n, r_effect_size.
+    Effect size r = Z / sqrt(N) using the normal approximation.
+    """
+    paired = df[[col_a, col_b]].dropna()
+    if len(paired) < 2:
+        raise ValueError(
+            f"Need at least 2 paired observations, got {len(paired)}."
+        )
+
+    result = stats.wilcoxon(paired[col_a], paired[col_b])
+
+    n = len(paired)
+    z_score = stats.norm.ppf(result.pvalue / 2)
+    r = abs(z_score) / np.sqrt(n)
+
+    return {
+        "W": float(result.statistic),
+        "p": float(result.pvalue),
+        "n": n,
+        "r_effect_size": float(r),
+    }

@@ -6,7 +6,12 @@ from scripts.ingestion.build_master_csv import build_master_csv
 from src.bias.feature_builder import FeatureBuilder
 from src.bias.topic_clusterer import TopicClusterer, ClusteringResult
 from src.comparison.outlet_comparator import summarize_outlets
-from src.comparison.statistical_tests import kruskal_wallis, dunns_posthoc, effect_sizes
+from src.comparison.statistical_tests import (
+    kruskal_wallis,
+    dunns_posthoc,
+    effect_sizes,
+    wilcoxon_signed_rank,
+)
 from src.extraction.web_extractor import WebExtractor
 from src.pipeline.config import PipelineConfig
 from src.preprocessing.filters import filter_shamima_mentions, filter_short_articles, filter_opinion_pieces
@@ -171,7 +176,11 @@ class NewsPipeline:
         return summary_df
 
     def run_statistical_tests(self) -> dict:
-        """Run Kruskal-Wallis, Dunn's post-hoc, and effect sizes on scaled sentiment."""
+        """Run Kruskal-Wallis on zeroshot_z, Wilcoxon on vader_z vs zeroshot_z.
+
+        Dunn's post-hoc is only run if Kruskal-Wallis is significant
+        (p < 0.05).
+        """
         sentiment_df = pd.read_csv(self.config.scaled_sentiment_output)
 
         kw = kruskal_wallis(sentiment_df)
@@ -181,10 +190,15 @@ class NewsPipeline:
         kw_df = pd.DataFrame([kw_row])
         _write_csv(kw_df, self.config.kruskal_wallis_output)
 
-        dunn_df = dunns_posthoc(sentiment_df)
-        _write_csv(dunn_df, self.config.dunns_posthoc_output)
+        if kw["p"] < 0.05:
+            dunn_df = dunns_posthoc(sentiment_df)
+            _write_csv(dunn_df, self.config.dunns_posthoc_output)
 
-        return kw_row
+        wc = wilcoxon_signed_rank(sentiment_df)
+        wc_df = pd.DataFrame([wc])
+        _write_csv(wc_df, self.config.wilcoxon_output)
+
+        return {**kw_row, "wilcoxon": wc}
 
     def run_clustering(
         self,
