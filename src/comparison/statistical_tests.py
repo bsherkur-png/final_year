@@ -53,3 +53,25 @@ def dunns_posthoc(
         group_col=group_column,
         p_adjust=p_adjust,
     )
+
+
+def effect_sizes(
+    h_stat: float,
+    n: int,
+    k: int,
+) -> dict[str, float | str]:
+    """Compute epsilon-squared effect size and interpretive label."""
+    if n <= k:
+        raise ValueError("n must be greater than k.")
+
+    epsilon_sq = (h_stat - k + 1) / (n - k)
+    epsilon_sq = max(0.0, min(1.0, epsilon_sq))
+
+    if epsilon_sq < 0.06:
+        label = "small"
+    elif epsilon_sq < 0.14:
+        label = "medium"
+    else:
+        label = "large"
+
+    return {"epsilon_squared": epsilon_sq, "label": label}
