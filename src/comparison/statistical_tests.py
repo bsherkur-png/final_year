@@ -1,6 +1,7 @@
 """Non-parametric statistical tests for outlet sentiment comparison."""
 
 import pandas as pd
+import scikit_posthocs as sp
 import scipy.stats as stats
 
 
@@ -32,3 +33,23 @@ def kruskal_wallis(
         "k": len(groups),
         "n": sum(len(group) for group in groups),
     }
+
+
+def dunns_posthoc(
+    df: pd.DataFrame,
+    score_column: str = "composite_score",
+    group_column: str = "news_outlet",
+    p_adjust: str = "bonferroni",
+) -> pd.DataFrame:
+    """Run Dunn's post-hoc pairwise test across outlet groups."""
+    if score_column not in df.columns:
+        raise ValueError(f"Missing required score column: {score_column}")
+    if group_column not in df.columns:
+        raise ValueError(f"Missing required group column: {group_column}")
+
+    return sp.posthoc_dunn(
+        df,
+        val_col=score_column,
+        group_col=group_column,
+        p_adjust=p_adjust,
+    )
