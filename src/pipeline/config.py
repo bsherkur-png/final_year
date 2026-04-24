@@ -13,6 +13,10 @@ class PipelineConfig:
     output_dir: Path = PROJECT_ROOT / "data" / "intermediate"
 
     @property
+    def manual_annotations_path(self) -> Path:
+        return PROJECT_ROOT / "data" / "manual" / "manual_annotations.csv"
+
+    @property
     def ingestion_output(self) -> Path:
         return self.output_dir / "master_articles.csv"
 
@@ -51,6 +55,10 @@ class PipelineConfig:
     @property
     def wilcoxon_output(self) -> Path:
         return self.output_dir / "wilcoxon_result.csv"
+
+    @property
+    def manual_validation_output(self) -> Path:
+        return self.output_dir / "manual_validation_results.csv"
 
     @property
     def cluster_assignments_output(self) -> Path:
