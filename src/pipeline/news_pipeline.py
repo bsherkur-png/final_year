@@ -41,7 +41,6 @@ class NewsPipeline:
         scored = scored.rename(
             columns={
                 "vader": "vader_score",
-                "nrc": "nrc_score",
             }
         )
         return scored
@@ -108,17 +107,8 @@ class NewsPipeline:
         final_columns = [
             "article_id",
             "news_outlet",
-            "zeroshot_score",
             "vader_score",
-            "nrc_score",
-            "nrc_anger",
-            "nrc_fear",
-            "nrc_trust",
-            "nrc_joy",
-            "nrc_disgust",
-            "nrc_surprise",
-            "nrc_anticipation",
-            "nrc_sadness",
+            "zeroshot_score",
         ]
         optional = {"zeroshot_score"}
         missing_columns = [
