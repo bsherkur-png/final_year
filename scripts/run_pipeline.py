@@ -40,6 +40,7 @@ MENU = """
   6. Run zero-shot sentiment (slow, run after 5)
   7. Run clustering only
   8. Run outlet comparison only
+  9. Run statistical tests (Kruskal-Wallis + Dunn's)
 
   0. Exit
 """
@@ -129,6 +130,16 @@ def run_outlet_comparison():
     print("Outlet comparison complete.")
 
 
+def run_statistical_tests():
+    pipeline = _pipeline()
+    if not _check_file(pipeline.config.scaled_sentiment_output, "Scaled sentiment scores"):
+        return
+    result = pipeline.run_statistical_tests()
+    print(f"Kruskal-Wallis H={result['H']:.4f}, p={result['p']:.6f}")
+    print(f"Effect size (epsilon²): {result['epsilon_squared']:.4f} ({result['label']})")
+    print("Dunn's post-hoc pairwise p-values saved.")
+
+
 ACTIONS = {
     "1": run_full_pipeline,
     "2": run_ingestion,
@@ -138,6 +149,7 @@ ACTIONS = {
     "6": run_zeroshot,
     "7": run_clustering,
     "8": run_outlet_comparison,
+    "9": run_statistical_tests,
 }
 
 

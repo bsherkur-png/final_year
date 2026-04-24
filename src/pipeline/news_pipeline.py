@@ -6,6 +6,7 @@ from scripts.ingestion.build_master_csv import build_master_csv
 from src.bias.feature_builder import FeatureBuilder
 from src.bias.topic_clusterer import TopicClusterer, ClusteringResult
 from src.comparison.outlet_comparator import summarize_outlets
+from src.comparison.statistical_tests import kruskal_wallis, dunns_posthoc, effect_sizes
 from src.extraction.web_extractor import WebExtractor
 from src.pipeline.config import PipelineConfig
 from src.preprocessing.filters import filter_shamima_mentions, filter_short_articles, filter_opinion_pieces
@@ -178,6 +179,22 @@ class NewsPipeline:
 
         _write_csv(summary_df, self.config.outlet_comparison_output)
         return summary_df
+
+    def run_statistical_tests(self) -> dict:
+        """Run Kruskal-Wallis, Dunn's post-hoc, and effect sizes on scaled sentiment."""
+        sentiment_df = pd.read_csv(self.config.scaled_sentiment_output)
+
+        kw = kruskal_wallis(sentiment_df)
+        es = effect_sizes(kw["H"], kw["n"], kw["k"])
+
+        kw_row = {**kw, **es}
+        kw_df = pd.DataFrame([kw_row])
+        _write_csv(kw_df, self.config.kruskal_wallis_output)
+
+        dunn_df = dunns_posthoc(sentiment_df)
+        _write_csv(dunn_df, self.config.dunns_posthoc_output)
+
+        return kw_row
 
     def run_clustering(
         self,

@@ -41,6 +41,14 @@ class PipelineConfig:
         return self.output_dir / "outlet_comparison_summary.csv"
 
     @property
+    def kruskal_wallis_output(self) -> Path:
+        return self.output_dir / "kruskal_wallis_result.csv"
+
+    @property
+    def dunns_posthoc_output(self) -> Path:
+        return self.output_dir / "dunns_posthoc_pvalues.csv"
+
+    @property
     def cluster_assignments_output(self) -> Path:
         return self.output_dir / "cluster_assignments.csv"
 
