@@ -1,7 +1,7 @@
 import pandas as pd
 
 
-SCORE_COLUMNS = ("vader_score", "nrc_score", "vader_z", "nrc_z", "composite_score")
+SCORE_COLUMNS = ("vader_score", "vader_z", "zeroshot_score", "zeroshot_z")
 
 
 def summarize_outlets(df: pd.DataFrame, polarity_column: str = "vader_score") -> pd.DataFrame:

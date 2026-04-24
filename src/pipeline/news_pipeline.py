@@ -147,14 +147,14 @@ class NewsPipeline:
 
     def run_scaled_sentiment(self, df: pd.DataFrame) -> pd.DataFrame:
         """Z-score VADER and NRC polarity, then compute a composite mean."""
-        polarity_cols = ["vader_score", "nrc_score"]
+        polarity_cols = ["vader_score"]
         if "zeroshot_score" in df.columns:
             polarity_cols.append("zeroshot_score")
         scaled_df = scale_sentiment(df, polarity_columns=polarity_cols)
 
         checkpoint_columns = [
             c for c in scaled_df.columns
-            if c not in ("title", "date_link", "vader_score", "nrc_score", "zeroshot_score")
+            if c not in ("title", "date_link", "vader_score", "zeroshot_score")
         ]
         _write_csv(scaled_df[checkpoint_columns], self.config.scaled_sentiment_output)
         return scaled_df
@@ -164,7 +164,7 @@ class NewsPipeline:
 
         summary_df = summarize_outlets(
             sentiment_df,
-            polarity_column="composite_score",
+            polarity_column="zeroshot_z",
         )
 
         _write_csv(summary_df, self.config.outlet_comparison_output)
