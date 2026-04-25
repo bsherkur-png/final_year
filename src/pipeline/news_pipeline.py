@@ -87,7 +87,7 @@ class NewsPipeline:
             rows.append(
                 {
                     "article_id": a.article_id,
-                    "vader_text": a.vader_text,
+                    "cleaned_text": a.cleaned_text,
                     "lemmas": " ".join(a.lemmas),
                 }
             )
