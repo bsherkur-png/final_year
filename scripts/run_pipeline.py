@@ -36,11 +36,13 @@ MENU = """
   2. Run ingestion only
   3. Run extraction only
   4. Run filtering only
-  5. Run preprocessing + lexicon sentiment
+  5. Run preprocessing + lexicon sentiment (VADER)
   6. Run zero-shot sentiment (slow, run after 5)
-  7. Run clustering only
-  8. Run outlet comparison only
-  9. Run statistical tests (Kruskal-Wallis + Dunn's)
+  7. Run z-standardisation
+  8. Run clustering only
+  9. Run outlet comparison only
+  10. Run statistical tests (Kruskal-Wallis + Wilcoxon)
+  11. Run Spearman validation against manual labels
 
   0. Exit
 """
@@ -85,9 +87,8 @@ def run_preprocessing_and_sentiment():
     articles = pipeline.run_preprocessing(filtered_df)
     print("Preprocessing complete.")
 
-    raw_df = pipeline.run_raw_sentiment(articles, filtered_df)
-    pipeline.run_scaled_sentiment(raw_df)
-    print("Sentiment scoring complete.")
+    pipeline.run_raw_sentiment(articles, filtered_df)
+    print("Preprocessing and VADER scoring complete.")
 
 
 def run_zeroshot():
@@ -103,9 +104,18 @@ def run_zeroshot():
     print(f"Running zero-shot classification on {len(filtered_df)} articles...")
     print("  (This may take 15-25 minutes on CPU)")
     articles = pipeline.run_preprocessing(filtered_df)
-    raw_df = pipeline.run_zeroshot_sentiment(articles, filtered_df)
-    pipeline.run_scaled_sentiment(raw_df)
+    pipeline.run_zeroshot_sentiment(articles, filtered_df)
     print("Zero-shot scoring complete.")
+
+
+def run_scaling():
+    """Run z-standardisation on raw sentiment scores."""
+    pipeline = _pipeline()
+    if not _check_file(pipeline.config.raw_sentiment_output, "Raw sentiment CSV"):
+        return
+    raw_df = pd.read_csv(pipeline.config.raw_sentiment_output)
+    pipeline.run_scaled_sentiment(raw_df)
+    print("Z-standardisation complete.")
 
 
 def run_clustering():
@@ -137,7 +147,28 @@ def run_statistical_tests():
     result = pipeline.run_statistical_tests()
     print(f"Kruskal-Wallis H={result['H']:.4f}, p={result['p']:.6f}")
     print(f"Effect size (epsilon²): {result['epsilon_squared']:.4f} ({result['label']})")
-    print("Dunn's post-hoc pairwise p-values saved.")
+    if result["p"] < 0.05:
+        print("Dunn's post-hoc pairwise p-values saved.")
+    else:
+        print("Dunn's post-hoc skipped (K-W not significant).")
+    wc = result["wilcoxon"]
+    print(f"Wilcoxon W={wc['W']:.4f}, p={wc['p']:.6f}, r={wc['r_effect_size']:.4f}")
+
+
+def run_spearman_validation():
+    """Run Spearman validation against manual annotations."""
+    from scripts.analysis.validate_against_manual import validate
+
+    from src.pipeline.config import PipelineConfig
+
+    config = PipelineConfig()
+    if not _check_file(config.manual_annotations_path, "Manual annotations CSV"):
+        print("  Create data/manual/manual_annotations.csv first.")
+        print("  Columns: article_id, manual_label (-1, 0, or +1)")
+        return
+    results_df = validate(config)
+    print("Spearman validation results:")
+    print(results_df.to_string(index=False))
 
 
 ACTIONS = {
@@ -147,9 +178,11 @@ ACTIONS = {
     "4": run_filtering,
     "5": run_preprocessing_and_sentiment,
     "6": run_zeroshot,
-    "7": run_clustering,
-    "8": run_outlet_comparison,
-    "9": run_statistical_tests,
+    "7": run_scaling,
+    "8": run_clustering,
+    "9": run_outlet_comparison,
+    "10": run_statistical_tests,
+    "11": run_spearman_validation,
 }
 
 

@@ -37,7 +37,7 @@ class ZeroshotScorer:
         Uses vader_text from ProcessedArticle — the same whitespace-
         normalised full article text that VADER scores. No truncation.
         """
-        text = article.vader_text
+        text = article.cleaned_text
         if not text:
             return 0.0
 

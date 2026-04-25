@@ -80,7 +80,7 @@ class LexiconScorer:
         """Return the three raw lexicon scores for one article."""
         nrc = self.score_nrc(article.nrc_tokens)
         return SentimentScores(
-            vader=self.score_vader(article.vader_text),
+            vader=self.score_vader(article.cleaned_text),
             nrc=nrc.positive - nrc.negative,
             nrc_anger=nrc.anger,
             nrc_fear=nrc.fear,
