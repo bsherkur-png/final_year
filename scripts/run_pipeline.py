@@ -18,19 +18,6 @@ from src.pipeline.news_pipeline import (
     run_full_pipeline,
 )
 
-_run_ingestion_stage = run_ingestion
-_run_extraction_stage = run_extraction
-_run_filtering_stage = run_filtering
-_run_preprocessing_stage = run_preprocessing
-_run_lexicon_sentiment_stage = run_lexicon_sentiment
-_run_chunk_diagnostics_stage = run_chunk_diagnostics
-_run_zeroshot_sentiment_stage = run_zeroshot_sentiment
-_run_scaled_sentiment_stage = run_scaled_sentiment
-_run_clustering_stage = run_clustering
-_run_outlet_comparison_stage = run_outlet_comparison
-_run_statistical_tests_stage = run_statistical_tests
-_run_full_pipeline_stage = run_full_pipeline
-
 
 def _check_file(path: Path, label: str) -> bool:
     if path.exists():
@@ -73,35 +60,35 @@ MENU = """
 """
 
 
-def run_full_pipeline():
+def menu_run_full_pipeline():
     config = PipelineConfig()
-    _run_full_pipeline_stage(config)
+    run_full_pipeline(config)
     print("Full pipeline complete.")
 
 
-def run_ingestion():
+def menu_run_ingestion():
     config = PipelineConfig()
-    df = _run_ingestion_stage(config)
+    df = run_ingestion(config)
     print(f"Ingestion complete. {len(df)} rows.")
 
 
-def run_extraction():
+def menu_run_extraction():
     config = PipelineConfig()
     if not _check_file(config.ingestion_output, "Master CSV"):
         return
-    df = _run_extraction_stage(config)
+    df = run_extraction(config)
     print(f"Extraction complete. {len(df)} rows.")
 
 
-def run_filtering():
+def menu_run_filtering():
     config = PipelineConfig()
     if not _check_file(config.extraction_raw_output, "Extracted articles"):
         return
-    df = _run_filtering_stage(config)
+    df = run_filtering(config)
     print(f"Filtering complete. {len(df)} articles remain.")
 
 
-def run_preprocessing_and_sentiment():
+def menu_run_preprocessing_and_sentiment():
     """Run preprocessing and sentiment scoring from the filtered CSV."""
     config = PipelineConfig()
     filtered_df = _load_filtered_df(config)
@@ -109,15 +96,15 @@ def run_preprocessing_and_sentiment():
         return
 
     print(f"Processing {len(filtered_df)} articles...")
-    articles = _run_preprocessing_stage(filtered_df, config)
+    articles = run_preprocessing(filtered_df, config)
     print("Preprocessing complete.")
 
-    _run_lexicon_sentiment_stage(articles, filtered_df, config)
-    _run_chunk_diagnostics_stage(articles, filtered_df, config)
+    run_lexicon_sentiment(articles, filtered_df, config)
+    run_chunk_diagnostics(articles, filtered_df, config)
     print("Preprocessing and VADER scoring complete.")
 
 
-def run_zeroshot():
+def menu_run_zeroshot():
     """Run zero-shot sentiment scoring on already-preprocessed articles."""
     config = PipelineConfig()
     filtered_df = _load_filtered_df(config)
@@ -126,22 +113,22 @@ def run_zeroshot():
 
     print(f"Running zero-shot classification on {len(filtered_df)} articles...")
     print("  (This may take 15-25 minutes on CPU)")
-    articles = _run_preprocessing_stage(filtered_df, config)
-    _run_zeroshot_sentiment_stage(articles, filtered_df, config)
+    articles = run_preprocessing(filtered_df, config)
+    run_zeroshot_sentiment(articles, filtered_df, config)
     print("Zero-shot scoring complete.")
 
 
-def run_scaling():
+def menu_run_scaling():
     """Run z-standardisation on raw sentiment scores."""
     config = PipelineConfig()
     if not _check_file(config.raw_sentiment_output, "Raw sentiment CSV"):
         return
     raw_df = pd.read_csv(config.raw_sentiment_output)
-    _run_scaled_sentiment_stage(raw_df, config)
+    run_scaled_sentiment(raw_df, config)
     print("Z-standardisation complete.")
 
 
-def run_clustering():
+def menu_run_clustering():
     """Run clustering from the filtered CSV."""
     config = PipelineConfig()
     filtered_df = _load_filtered_df(config)
@@ -149,25 +136,25 @@ def run_clustering():
         return
 
     print(f"Processing {len(filtered_df)} articles for clustering...")
-    articles = _run_preprocessing_stage(filtered_df, config)
+    articles = run_preprocessing(filtered_df, config)
 
-    result = _run_clustering_stage(articles, filtered_df, config)
+    result = run_clustering(articles, filtered_df, config)
     print(f"Clustering complete. k={result.k}, silhouette={result.silhouette_score:.4f}")
 
 
-def run_outlet_comparison():
+def menu_run_outlet_comparison():
     config = PipelineConfig()
     if not _check_file(config.scaled_sentiment_output, "Scaled sentiment scores"):
         return
-    _run_outlet_comparison_stage(config)
+    run_outlet_comparison(config)
     print("Outlet comparison complete.")
 
 
-def run_statistical_tests():
+def menu_run_statistical_tests():
     config = PipelineConfig()
     if not _check_file(config.scaled_sentiment_output, "Scaled sentiment scores"):
         return
-    result = _run_statistical_tests_stage(config)
+    result = run_statistical_tests(config)
     print(f"Kruskal-Wallis H={result['H']:.4f}, p={result['p']:.6f}")
     print(f"Effect size (epsilon²): {result['epsilon_squared']:.4f} ({result['label']})")
     if result["p"] < 0.05:
@@ -212,16 +199,16 @@ def run_spearman_validation():
 
 
 ACTIONS = {
-    "1": run_full_pipeline,
-    "2": run_ingestion,
-    "3": run_extraction,
-    "4": run_filtering,
-    "5": run_preprocessing_and_sentiment,
-    "6": run_zeroshot,
-    "7": run_scaling,
-    "8": run_clustering,
-    "9": run_outlet_comparison,
-    "10": run_statistical_tests,
+    "1": menu_run_full_pipeline,
+    "2": menu_run_ingestion,
+    "3": menu_run_extraction,
+    "4": menu_run_filtering,
+    "5": menu_run_preprocessing_and_sentiment,
+    "6": menu_run_zeroshot,
+    "7": menu_run_scaling,
+    "8": menu_run_clustering,
+    "9": menu_run_outlet_comparison,
+    "10": menu_run_statistical_tests,
     "11": run_build_manual_annotations,
     "12": run_spearman_validation,
 }

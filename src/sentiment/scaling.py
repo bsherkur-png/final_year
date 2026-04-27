@@ -5,7 +5,7 @@ import pandas as pd
 
 def scale_sentiment(
     df: pd.DataFrame,
-    polarity_columns: list[str] = ("vader_score",),
+    polarity_columns: tuple[str, ...] = ("vader_score",),
 ) -> pd.DataFrame:
     """Z-score each polarity column independently.
 

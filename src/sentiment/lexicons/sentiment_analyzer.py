@@ -90,7 +90,7 @@ class LexiconScorer:
 
     def score_article(self, article: ProcessedArticle) -> SentimentScores:
         """Return the three raw lexicon scores for one article."""
-        nrc = self.score_nrc(article.nrc_tokens)
+        nrc = self.score_nrc(article.lemmas)
         return SentimentScores(
             vader=self.score_vader_chunks(article.chunks),
             nrc=nrc.positive - nrc.negative,
@@ -108,12 +108,11 @@ class LexiconScorer:
     def score_all(self, articles: list[ProcessedArticle]) -> pd.DataFrame:
         """Score all articles and return a DataFrame indexed by article_id."""
         import pandas as pd
-        from dataclasses import asdict
 
         rows = {
-            article.article_id: asdict(self.score_article(article))
+            article.article_id: self.score_vader_chunks(article.chunks)
             for article in articles
         }
-        scores_df = pd.DataFrame.from_dict(rows, orient="index")
+        scores_df = pd.DataFrame.from_dict(rows, orient="index", columns=["vader"])
         scores_df.index.name = "article_id"
         return scores_df

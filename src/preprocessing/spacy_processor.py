@@ -28,11 +28,6 @@ class ProcessedArticle:
         ]
 
     @property
-    def nrc_tokens(self) -> list[str]:
-        """Lowercased lemmas for NRC scoring. Stop words and non-alpha removed."""
-        return self.lemmas
-
-    @property
     def chunks(self) -> list[str]:
         """Non-overlapping 4-sentence windows of the cleaned article text."""
         sentences: list[str] = []

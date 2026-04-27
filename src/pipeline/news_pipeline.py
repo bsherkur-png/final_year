@@ -152,7 +152,7 @@ def run_zeroshot_sentiment(
 
 
 def run_scaled_sentiment(df: pd.DataFrame, config: PipelineConfig) -> pd.DataFrame:
-    """Z-score VADER and NRC polarity, then compute a composite mean."""
+    """Z-score polarity columns and write scaled CSV."""
     polarity_cols = [c for c in ("vader_score", "zeroshot_score") if c in df.columns]
     scaled_df = scale_sentiment(df, polarity_columns=polarity_cols)
 
