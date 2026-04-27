@@ -6,6 +6,8 @@ import spacy.tokens
 
 from src.preprocessing.text_cleaner import strip_boilerplate
 
+CHUNK_SIZE_SENTENCES = 4
+
 
 @dataclass
 class ProcessedArticle:
@@ -29,6 +31,20 @@ class ProcessedArticle:
     def nrc_tokens(self) -> list[str]:
         """Lowercased lemmas for NRC scoring. Stop words and non-alpha removed."""
         return self.lemmas
+
+    @property
+    def chunks(self) -> list[str]:
+        """Non-overlapping 4-sentence windows of the cleaned article text."""
+        sentences: list[str] = []
+        for sent in self.doc.sents:
+            sentence_text = re.sub(r"\s+", " ", sent.text).strip()
+            if sentence_text and sum(1 for t in sent if t.is_alpha) >= 4:
+                sentences.append(sentence_text)
+        return [
+            " ".join(sentences[i:i + CHUNK_SIZE_SENTENCES])
+            for i in range(0, len(sentences), CHUNK_SIZE_SENTENCES)
+        ]
+
 
 class SpacyProcessor:
     """Wrapper around spaCy that emits ProcessedArticle objects."""

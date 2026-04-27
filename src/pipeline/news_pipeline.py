@@ -125,6 +125,18 @@ class NewsPipeline:
 
         final_df = scored_df.loc[:, final_columns]
         _write_csv(final_df, self.config.raw_sentiment_output)
+        scorer = LexiconScorer()
+        chunk_rows = [
+            {"article_id": int(a.article_id), "chunk_index": i, "chunk_text": c, "vader_score": scorer.score_vader(c)}
+            for a in articles
+            for i, c in enumerate(a.chunks)
+        ]
+        chunk_df = pd.DataFrame(chunk_rows, columns=["article_id", "chunk_index", "chunk_text", "vader_score"])
+        chunk_df = chunk_df.merge(df[["article_id", "news_outlet"]], on="article_id", how="left")
+        _write_csv(
+            chunk_df[["article_id", "news_outlet", "chunk_index", "chunk_text", "vader_score"]],
+            self.config.chunk_sentiment_output,
+        )
         return final_df
 
     def run_zeroshot_sentiment(

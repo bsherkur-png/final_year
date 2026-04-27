@@ -55,6 +55,18 @@ class LexiconScorer:
         scores = self.vader.polarity_scores(text)
         return float(scores["compound"])
 
+    def score_vader_chunks(self, chunks: list[str]) -> float:
+        """Mean of VADER compound scores across non-empty chunks.
+
+        Returns 0.0 if the list is empty or contains only empty strings.
+        """
+        valid_chunks = [c for c in chunks if c.strip()]
+        if not valid_chunks:
+            return 0.0
+
+        scores = [self.vader.polarity_scores(c)["compound"] for c in valid_chunks]
+        return float(sum(scores) / len(scores))
+
     def score_nrc(self, tokens: list[str]) -> NrcScores:
         """Return NRC emotion proportions normalised by token count."""
         if not tokens:
@@ -80,7 +92,7 @@ class LexiconScorer:
         """Return the three raw lexicon scores for one article."""
         nrc = self.score_nrc(article.nrc_tokens)
         return SentimentScores(
-            vader=self.score_vader(article.cleaned_text),
+            vader=self.score_vader_chunks(article.chunks),
             nrc=nrc.positive - nrc.negative,
             nrc_anger=nrc.anger,
             nrc_fear=nrc.fear,
