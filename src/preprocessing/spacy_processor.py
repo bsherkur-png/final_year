@@ -4,8 +4,6 @@ from dataclasses import dataclass
 import pandas as pd
 import spacy.tokens
 
-from src.preprocessing.text_cleaner import strip_boilerplate
-
 CHUNK_SIZE_SENTENCES = 4
 
 
@@ -68,7 +66,7 @@ class SpacyProcessor:
             if raw_text is None or (isinstance(raw_text, float) and str(raw_text) == "nan")
             else str(raw_text)
         )
-        cleaned = re.sub(r"\s+", " ", strip_boilerplate(text)).strip()
+        cleaned = re.sub(r"\s+", " ", text).strip()
         return ProcessedArticle(
             article_id=article_id,
             raw_text=text,
