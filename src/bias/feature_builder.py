@@ -42,7 +42,7 @@ class FeatureBuilder:
 
     def build(self, articles: list[ProcessedArticle]) -> csr_matrix:
         """Fit TF-IDF and return the document-term matrix."""
-        if len(articles) < 2:
+        if len(articles) <  2:
             raise ValueError(
                 f"Need at least 2 articles for TF-IDF; got {len(articles)}."
             )
