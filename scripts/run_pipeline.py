@@ -2,10 +2,34 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.pipeline.news_pipeline import NewsPipeline
+from src.pipeline.config import PipelineConfig
+from src.pipeline.news_pipeline import (
+    run_ingestion,
+    run_extraction,
+    run_filtering,
+    run_preprocessing,
+    run_lexicon_sentiment,
+    run_chunk_diagnostics,
+    run_zeroshot_sentiment,
+    run_scaled_sentiment,
+    run_clustering,
+    run_outlet_comparison,
+    run_statistical_tests,
+    run_full_pipeline,
+)
 
-def _pipeline() -> NewsPipeline:
-    return NewsPipeline()
+_run_ingestion_stage = run_ingestion
+_run_extraction_stage = run_extraction
+_run_filtering_stage = run_filtering
+_run_preprocessing_stage = run_preprocessing
+_run_lexicon_sentiment_stage = run_lexicon_sentiment
+_run_chunk_diagnostics_stage = run_chunk_diagnostics
+_run_zeroshot_sentiment_stage = run_zeroshot_sentiment
+_run_scaled_sentiment_stage = run_scaled_sentiment
+_run_clustering_stage = run_clustering
+_run_outlet_comparison_stage = run_outlet_comparison
+_run_statistical_tests_stage = run_statistical_tests
+_run_full_pipeline_stage = run_full_pipeline
 
 
 def _check_file(path: Path, label: str) -> bool:
@@ -16,11 +40,11 @@ def _check_file(path: Path, label: str) -> bool:
     return False
 
 
-def _load_filtered_df(pipeline: NewsPipeline) -> pd.DataFrame | None:
+def _load_filtered_df(config: PipelineConfig) -> pd.DataFrame | None:
     """Read the filtered CSV and apply the minimum-articles-per-outlet filter."""
-    if not _check_file(pipeline.config.extraction_output, "Filtered articles"):
+    if not _check_file(config.extraction_output, "Filtered articles"):
         return None
-    filtered_df = pd.read_csv(pipeline.config.extraction_output)
+    filtered_df = pd.read_csv(config.extraction_output)
     filtered_df = filtered_df.groupby("news_outlet").filter(lambda g: len(g) >= 6)
     return filtered_df
 
@@ -50,102 +74,100 @@ MENU = """
 
 
 def run_full_pipeline():
-    pipeline = _pipeline()
-    pipeline.run()
+    config = PipelineConfig()
+    _run_full_pipeline_stage(config)
     print("Full pipeline complete.")
 
 
 def run_ingestion():
-    pipeline = _pipeline()
-    df = pipeline.run_ingestion()
+    config = PipelineConfig()
+    df = _run_ingestion_stage(config)
     print(f"Ingestion complete. {len(df)} rows.")
 
 
 def run_extraction():
-    pipeline = _pipeline()
-    if not _check_file(pipeline.config.ingestion_output, "Master CSV"):
+    config = PipelineConfig()
+    if not _check_file(config.ingestion_output, "Master CSV"):
         return
-    df = pipeline.run_extraction()
+    df = _run_extraction_stage(config)
     print(f"Extraction complete. {len(df)} rows.")
 
 
 def run_filtering():
-    pipeline = _pipeline()
-    if not _check_file(pipeline.config.extraction_raw_output, "Extracted articles"):
+    config = PipelineConfig()
+    if not _check_file(config.extraction_raw_output, "Extracted articles"):
         return
-    df = pipeline.run_filtering()
+    df = _run_filtering_stage(config)
     print(f"Filtering complete. {len(df)} articles remain.")
 
 
 def run_preprocessing_and_sentiment():
     """Run preprocessing and sentiment scoring from the filtered CSV."""
-    pipeline = _pipeline()
-    filtered_df = _load_filtered_df(pipeline)
+    config = PipelineConfig()
+    filtered_df = _load_filtered_df(config)
     if filtered_df is None:
         return
 
     print(f"Processing {len(filtered_df)} articles...")
-    articles = pipeline.run_preprocessing(filtered_df)
+    articles = _run_preprocessing_stage(filtered_df, config)
     print("Preprocessing complete.")
 
-    pipeline.run_raw_sentiment(articles, filtered_df)
+    _run_lexicon_sentiment_stage(articles, filtered_df, config)
+    _run_chunk_diagnostics_stage(articles, filtered_df, config)
     print("Preprocessing and VADER scoring complete.")
 
 
 def run_zeroshot():
     """Run zero-shot sentiment scoring on already-preprocessed articles."""
-    pipeline = _pipeline()
-    filtered_df = _load_filtered_df(pipeline)
+    config = PipelineConfig()
+    filtered_df = _load_filtered_df(config)
     if filtered_df is None:
-        return
-    if not _check_file(pipeline.config.raw_sentiment_output, "Raw sentiment CSV"):
-        print("  Run option 5 (preprocessing + sentiment) first.")
         return
 
     print(f"Running zero-shot classification on {len(filtered_df)} articles...")
     print("  (This may take 15-25 minutes on CPU)")
-    articles = pipeline.run_preprocessing(filtered_df)
-    pipeline.run_zeroshot_sentiment(articles, filtered_df)
+    articles = _run_preprocessing_stage(filtered_df, config)
+    _run_zeroshot_sentiment_stage(articles, filtered_df, config)
     print("Zero-shot scoring complete.")
 
 
 def run_scaling():
     """Run z-standardisation on raw sentiment scores."""
-    pipeline = _pipeline()
-    if not _check_file(pipeline.config.raw_sentiment_output, "Raw sentiment CSV"):
+    config = PipelineConfig()
+    if not _check_file(config.raw_sentiment_output, "Raw sentiment CSV"):
         return
-    raw_df = pd.read_csv(pipeline.config.raw_sentiment_output)
-    pipeline.run_scaled_sentiment(raw_df)
+    raw_df = pd.read_csv(config.raw_sentiment_output)
+    _run_scaled_sentiment_stage(raw_df, config)
     print("Z-standardisation complete.")
 
 
 def run_clustering():
     """Run clustering from the filtered CSV."""
-    pipeline = _pipeline()
-    filtered_df = _load_filtered_df(pipeline)
+    config = PipelineConfig()
+    filtered_df = _load_filtered_df(config)
     if filtered_df is None:
         return
 
     print(f"Processing {len(filtered_df)} articles for clustering...")
-    articles = pipeline.run_preprocessing(filtered_df)
+    articles = _run_preprocessing_stage(filtered_df, config)
 
-    result = pipeline.run_clustering(articles, filtered_df)
+    result = _run_clustering_stage(articles, filtered_df, config)
     print(f"Clustering complete. k={result.k}, silhouette={result.silhouette_score:.4f}")
 
 
 def run_outlet_comparison():
-    pipeline = _pipeline()
-    if not _check_file(pipeline.config.scaled_sentiment_output, "Scaled sentiment scores"):
+    config = PipelineConfig()
+    if not _check_file(config.scaled_sentiment_output, "Scaled sentiment scores"):
         return
-    pipeline.run_outlet_comparison()
+    _run_outlet_comparison_stage(config)
     print("Outlet comparison complete.")
 
 
 def run_statistical_tests():
-    pipeline = _pipeline()
-    if not _check_file(pipeline.config.scaled_sentiment_output, "Scaled sentiment scores"):
+    config = PipelineConfig()
+    if not _check_file(config.scaled_sentiment_output, "Scaled sentiment scores"):
         return
-    result = pipeline.run_statistical_tests()
+    result = _run_statistical_tests_stage(config)
     print(f"Kruskal-Wallis H={result['H']:.4f}, p={result['p']:.6f}")
     print(f"Effect size (epsilon²): {result['epsilon_squared']:.4f} ({result['label']})")
     if result["p"] < 0.05:
@@ -158,8 +180,9 @@ def run_statistical_tests():
 
 def run_build_manual_annotations():
     """Build article-level manual labels from chunk-level Label Studio export."""
+    config = PipelineConfig()
     from src.comparison.aggregate_annotations import aggregate_chunk_labels
-    from src.pipeline.config import PROJECT_ROOT, PipelineConfig
+    from src.pipeline.config import PROJECT_ROOT
 
     label_studio_path = PROJECT_ROOT / "data" / "raw" / "label_studio_export.csv"
     if not _check_file(label_studio_path, "Label Studio export"):
@@ -169,7 +192,6 @@ def run_build_manual_annotations():
     chunks_df = pd.read_csv(label_studio_path)
     manual_df = aggregate_chunk_labels(chunks_df)
 
-    config = PipelineConfig()
     config.manual_annotations_path.parent.mkdir(parents=True, exist_ok=True)
     manual_df.to_csv(config.manual_annotations_path, index=False)
     print(f"Wrote {len(manual_df)} article labels to {config.manual_annotations_path}")
@@ -177,11 +199,9 @@ def run_build_manual_annotations():
 
 def run_spearman_validation():
     """Run Spearman validation against manual annotations."""
+    config = PipelineConfig()
     from scripts.analysis.validate_against_manual import validate
 
-    from src.pipeline.config import PipelineConfig
-
-    config = PipelineConfig()
     if not _check_file(config.manual_annotations_path, "Manual annotations CSV"):
         print("  Create data/manual/manual_annotations.csv first.")
         print("  Columns: article_id, manual_label (-1, 0, or +1)")
@@ -223,8 +243,9 @@ def main():
 
         try:
             action()
-        except Exception as e:
-            print(f"Error: {e}")
+        except Exception:
+            import traceback
+            traceback.print_exc()
 
         input("\nPress Enter to continue...")
 
