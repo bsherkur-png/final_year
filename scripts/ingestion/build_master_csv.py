@@ -10,7 +10,7 @@ def build_master_csv(input_file: Path, output_file: Path) -> pd.DataFrame:
     """Deduplicate, filter opinions, and assign IDs to raw metadata CSV."""
     df = pd.read_csv(input_file)
     df = df.rename(columns={"link": "date_link", "source": "news_outlet"})
-    df = df.drop(columns=["page", "snippet"])
+    df = df.drop(columns=["page", "snippet"], errors="ignore")
     df = df.drop_duplicates(subset=["date_link"])
     df = filter_opinion_pieces(df)
     df["article_id"] = range(1, len(df) + 1)

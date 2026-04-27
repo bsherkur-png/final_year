@@ -165,7 +165,7 @@ def menu_run_statistical_tests():
     print(f"Wilcoxon W={wc['W']:.4f}, p={wc['p']:.6f}, r={wc['r_effect_size']:.4f}")
 
 
-def run_build_manual_annotations():
+def menu_build_annotations():
     """Build article-level manual labels from chunk-level Label Studio export."""
     config = PipelineConfig()
     from src.comparison.aggregate_annotations import aggregate_chunk_labels
@@ -184,7 +184,7 @@ def run_build_manual_annotations():
     print(f"Wrote {len(manual_df)} article labels to {config.manual_annotations_path}")
 
 
-def run_spearman_validation():
+def menu_spearman_validation():
     """Run Spearman validation against manual annotations."""
     config = PipelineConfig()
     from scripts.analysis.validate_against_manual import validate
@@ -209,8 +209,8 @@ ACTIONS = {
     "8": menu_run_clustering,
     "9": menu_run_outlet_comparison,
     "10": menu_run_statistical_tests,
-    "11": run_build_manual_annotations,
-    "12": run_spearman_validation,
+    "11": menu_build_annotations,
+    "12": menu_spearman_validation,
 }
 
 

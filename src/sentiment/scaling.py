@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from scipy.stats import zscore
 
 import pandas as pd
@@ -5,7 +7,7 @@ import pandas as pd
 
 def scale_sentiment(
     df: pd.DataFrame,
-    polarity_columns: tuple[str, ...] = ("vader_score",),
+    polarity_columns: Sequence[str] = ("vader_score",),
 ) -> pd.DataFrame:
     """Z-score each polarity column independently.
 
