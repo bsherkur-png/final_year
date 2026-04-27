@@ -66,9 +66,32 @@ class ZeroshotScorer:
 
         Columns: zeroshot (float, the P(pos) - P(neg) score).
         """
+        article_scores: dict[str, list[float]] = {article.article_id: [] for article in articles}
+        chunk_texts: list[str] = []
+        chunk_article_ids: list[str] = []
+        for article in articles:
+            filtered_chunks = [chunk for chunk in article.chunks if chunk.strip()]
+            chunk_texts.extend(filtered_chunks)
+            chunk_article_ids.extend([article.article_id] * len(filtered_chunks))
+
+        if chunk_texts:
+            results = self._classifier(
+                chunk_texts,
+                candidate_labels=CANDIDATE_LABELS,
+                hypothesis_template=HYPOTHESIS_TEMPLATE,
+                multi_label=False,
+                batch_size=8,
+            )
+            for article_id, result in zip(chunk_article_ids, results):
+                label_scores = dict(zip(result["labels"], result["scores"]))
+                article_scores[article_id].append(
+                    label_scores.get("positive sentiment", 0.0)
+                    - label_scores.get("negative sentiment", 0.0)
+                )
+
         rows = {
-            article.article_id: {"zeroshot": self.score_article(article)}
-            for article in articles
+            article_id: {"zeroshot": float(sum(scores) / len(scores)) if scores else 0.0}
+            for article_id, scores in article_scores.items()
         }
         scores_df = pd.DataFrame.from_dict(rows, orient="index")
         scores_df.index.name = "article_id"
