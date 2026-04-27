@@ -41,6 +41,17 @@ def filter_short_articles(
     return df.loc[word_counts >= min_words].reset_index(drop=True)
 
 
+def filter_small_outlets(
+    df: pd.DataFrame,
+    min_articles: int = 6,
+    group_column: str = "news_outlet",
+) -> pd.DataFrame:
+    """Remove outlets with fewer than min_articles articles."""
+    return df.groupby(group_column).filter(
+        lambda g: len(g) >= min_articles
+    ).reset_index(drop=True)
+
+
 _OPINION_URL_MARKERS = [
     "/commentisfree/",
     "/voices/",

@@ -15,8 +15,8 @@ from src.pipeline.news_pipeline import (
     run_clustering,
     run_outlet_comparison,
     run_statistical_tests,
-    run_full_pipeline,
 )
+from src.preprocessing.filters import filter_small_outlets
 
 
 def _check_file(path: Path, label: str) -> bool:
@@ -32,7 +32,7 @@ def _load_filtered_df(config: PipelineConfig) -> pd.DataFrame | None:
     if not _check_file(config.extraction_output, "Filtered articles"):
         return None
     filtered_df = pd.read_csv(config.extraction_output)
-    filtered_df = filtered_df.groupby("news_outlet").filter(lambda g: len(g) >= 6)
+    filtered_df = filter_small_outlets(filtered_df, min_articles=6, group_column="news_outlet")
     return filtered_df
 
 
@@ -43,7 +43,7 @@ MENU = """
 
   Pipeline stages
   ---------------
-  1. Run full pipeline (ingestion → comparison)
+  1. (reserved)
   2. Run ingestion only
   3. Run extraction only
   4. Run filtering only
@@ -58,12 +58,6 @@ MENU = """
 
   0. Exit
 """
-
-
-def menu_run_full_pipeline():
-    config = PipelineConfig()
-    run_full_pipeline(config)
-    print("Full pipeline complete.")
 
 
 def menu_run_ingestion():
@@ -199,7 +193,6 @@ def menu_spearman_validation():
 
 
 ACTIONS = {
-    "1": menu_run_full_pipeline,
     "2": menu_run_ingestion,
     "3": menu_run_extraction,
     "4": menu_run_filtering,

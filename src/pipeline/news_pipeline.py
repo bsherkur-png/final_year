@@ -239,21 +239,3 @@ def run_clustering(
 
     return result
 
-
-def run_full_pipeline(config: PipelineConfig) -> pd.DataFrame:
-    run_ingestion(config)
-    run_extraction(config)
-    filtered_df = run_filtering(config)
-    filtered_df = filtered_df.groupby("news_outlet").filter(lambda g: len(g) >= 6)
-
-    # spaCy processes once — result shared by sentiment + clustering
-    articles = run_preprocessing(filtered_df, config)
-
-    run_lexicon_sentiment(articles, filtered_df, config)
-    run_chunk_diagnostics(articles, filtered_df, config)
-    scaled_df = run_scaled_sentiment(
-        pd.read_csv(config.raw_sentiment_output), config
-    )
-    run_clustering(articles, filtered_df, config)
-    run_outlet_comparison(config)
-    return scaled_df
