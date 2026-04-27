@@ -41,6 +41,10 @@ class PipelineConfig:
         return self.output_dir / "chunk_sentiment.csv"
 
     @property
+    def chunk_zeroshot_output(self) -> Path:
+        return self.output_dir / "chunk_zeroshot_sentiment.csv"
+
+    @property
     def scaled_sentiment_output(self) -> Path:
         return self.output_dir / "scaled_sentiment_articles.csv"
 

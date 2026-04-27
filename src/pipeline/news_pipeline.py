@@ -135,7 +135,7 @@ def run_zeroshot_sentiment(
     config: PipelineConfig,
 ) -> pd.DataFrame:
     zeroshot = ZeroshotScorer()
-    zeroshot_df = zeroshot.score_all(articles)
+    article_df, chunk_df = zeroshot.score_all(articles)
 
     if not config.raw_sentiment_output.exists():
         raise ValueError(
@@ -144,10 +144,18 @@ def run_zeroshot_sentiment(
 
     raw_df = pd.read_csv(config.raw_sentiment_output)
     raw_df = raw_df.set_index("article_id").join(
-        zeroshot_df.rename(columns={"zeroshot": "zeroshot_score"})
+        article_df.rename(columns={"zeroshot": "zeroshot_score"})
     ).reset_index()
 
     _write_csv(raw_df, config.raw_sentiment_output)
+    chunk_df = chunk_df.merge(
+        df[["article_id", "news_outlet"]], on="article_id", how="left"
+    )
+    _write_csv(
+        chunk_df[["article_id", "news_outlet", "chunk_index",
+                   "chunk_text", "zeroshot_score"]],
+        config.chunk_zeroshot_output,
+    )
     return raw_df
 
 
