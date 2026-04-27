@@ -4,12 +4,15 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.preprocessing.filters import filter_opinion_pieces
+
 
 def build_master_csv(input_file: Path, output_file: Path) -> pd.DataFrame:
     df = pd.read_csv(input_file)
     df = df.rename(columns={"link": "date_link", "source": "news_outlet"})
     df = df.drop(columns=["page", "snippet"])
     df = df.drop_duplicates(subset=["date_link"])
+    df = filter_opinion_pieces(df)
     df["article_id"] = range(1, len(df) + 1)
     output_file.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_file, index=False)

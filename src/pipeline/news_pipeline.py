@@ -14,7 +14,7 @@ from src.comparison.statistical_tests import (
 )
 from src.extraction.web_extractor import WebExtractor
 from src.pipeline.config import PipelineConfig
-from src.preprocessing.filters import filter_shamima_mentions, filter_short_articles, filter_opinion_pieces
+from src.preprocessing.filters import filter_shamima_mentions, filter_short_articles
 from src.preprocessing.spacy_processor import SpacyProcessor, ProcessedArticle
 from src.sentiment.lexicons.sentiment_analyzer import LexiconScorer
 from src.sentiment.zeroshot_scorer import ZeroshotScorer
@@ -73,7 +73,6 @@ class NewsPipeline:
             text_columns=("title", "body"),
         )
         filtered_df = filter_short_articles(filtered_df, min_words=250)
-        filtered_df = filter_opinion_pieces(filtered_df)
 
         _write_csv(filtered_df, self.config.extraction_output)
         return filtered_df

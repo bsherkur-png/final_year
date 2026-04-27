@@ -42,7 +42,8 @@ MENU = """
   8. Run clustering only
   9. Run outlet comparison only
   10. Run statistical tests (Kruskal-Wallis + Wilcoxon)
-  11. Run Spearman validation against manual labels
+  11. Build manual annotations from Label Studio export
+  12. Run Spearman validation against manual labels
 
   0. Exit
 """
@@ -155,6 +156,25 @@ def run_statistical_tests():
     print(f"Wilcoxon W={wc['W']:.4f}, p={wc['p']:.6f}, r={wc['r_effect_size']:.4f}")
 
 
+def run_build_manual_annotations():
+    """Build article-level manual labels from chunk-level Label Studio export."""
+    from src.comparison.aggregate_annotations import aggregate_chunk_labels
+    from src.pipeline.config import PROJECT_ROOT, PipelineConfig
+
+    label_studio_path = PROJECT_ROOT / "data" / "raw" / "label_studio_export.csv"
+    if not _check_file(label_studio_path, "Label Studio export"):
+        print(f"  Place your Label Studio CSV export at {label_studio_path}.")
+        return
+
+    chunks_df = pd.read_csv(label_studio_path)
+    manual_df = aggregate_chunk_labels(chunks_df)
+
+    config = PipelineConfig()
+    config.manual_annotations_path.parent.mkdir(parents=True, exist_ok=True)
+    manual_df.to_csv(config.manual_annotations_path, index=False)
+    print(f"Wrote {len(manual_df)} article labels to {config.manual_annotations_path}")
+
+
 def run_spearman_validation():
     """Run Spearman validation against manual annotations."""
     from scripts.analysis.validate_against_manual import validate
@@ -182,7 +202,8 @@ ACTIONS = {
     "8": run_clustering,
     "9": run_outlet_comparison,
     "10": run_statistical_tests,
-    "11": run_spearman_validation,
+    "11": run_build_manual_annotations,
+    "12": run_spearman_validation,
 }
 
 
