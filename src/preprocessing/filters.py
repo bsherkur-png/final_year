@@ -11,7 +11,7 @@ def filter_shamima_mentions(
     min_mentions: int = 2,
     text_columns: tuple[str, ...] = ("title", "body"),
 ) -> pd.DataFrame:
-    #Keep only rows where Shamima Begum is mentioned at least min_mentions times
+    """Keep articles mentioning Shamima Begum at least min_mentions times."""
     missing = [c for c in text_columns if c not in df.columns]
     if missing:
         raise ValueError(

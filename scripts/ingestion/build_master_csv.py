@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 from pathlib import Path
 
 import pandas as pd
@@ -8,6 +7,7 @@ from src.preprocessing.filters import filter_opinion_pieces
 
 
 def build_master_csv(input_file: Path, output_file: Path) -> pd.DataFrame:
+    """Deduplicate, filter opinions, and assign IDs to raw metadata CSV."""
     df = pd.read_csv(input_file)
     df = df.rename(columns={"link": "date_link", "source": "news_outlet"})
     df = df.drop(columns=["page", "snippet"])

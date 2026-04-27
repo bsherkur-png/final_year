@@ -5,6 +5,7 @@ SCORE_COLUMNS = ("vader_score", "vader_z", "zeroshot_score", "zeroshot_z")
 
 
 def summarize_outlets(df: pd.DataFrame, polarity_column: str = "vader_score") -> pd.DataFrame:
+    """Compute mean, std, and count of sentiment scores per outlet."""
     if "news_outlet" not in df.columns:
         raise ValueError('Missing required column: "news_outlet"')
     if polarity_column not in df.columns:

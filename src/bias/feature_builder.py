@@ -34,7 +34,6 @@ class FeatureBuilder:
             max_df=0.5,
             min_df=3,
         )
-        self._is_fitted = False
 
     @staticmethod
     def _filter_boilerplate(tokens: list[str]) -> list[str]:
@@ -50,13 +49,12 @@ class FeatureBuilder:
 
         corpus = [self._filter_boilerplate(article.lemmas) for article in articles]
         tfidf_matrix = self._tfidf.fit_transform(corpus)
-
-        self._is_fitted = True
         return tfidf_matrix
 
     @property
     def feature_names(self) -> list[str]:
         """Return fitted TF-IDF feature names."""
-        if not self._is_fitted:
-            raise RuntimeError("Call build() before accessing feature_names.")
+        from sklearn.utils.validation import check_is_fitted
+
+        check_is_fitted(self._tfidf)
         return list(self._tfidf.get_feature_names_out())

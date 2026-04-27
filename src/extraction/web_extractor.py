@@ -2,11 +2,7 @@ import time
 
 import pandas as pd
 import requests
-
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    BeautifulSoup = None
+from bs4 import BeautifulSoup
 
 
 DEFAULT_USER_AGENT = (
@@ -22,21 +18,7 @@ DEFAULT_BROWSER_HEADERS = {
 }
 
 
-def _extract_text_fallback(html: str) -> str:
-    import re
-
-    article_match = re.search(r"<article\b[^>]*>(.*?)</article>", html, flags=re.IGNORECASE | re.DOTALL)
-    source_html = article_match.group(1) if article_match else html
-    matches = re.findall(r"<p[^>]*>(.*?)</p>", source_html, flags=re.IGNORECASE | re.DOTALL)
-    cleaned = [re.sub(r"<[^>]+>", " ", match) for match in matches]
-    cleaned = [re.sub(r"\s+", " ", text).strip() for text in cleaned]
-    return " ".join(text for text in cleaned if text)
-
-
 def extract_article_text(html: str) -> str:
-    if BeautifulSoup is None:
-        return _extract_text_fallback(html)
-
     soup = BeautifulSoup(html, "html.parser")
     container = soup.find(class_="main v-sep") or soup.find("article")
 
@@ -123,4 +105,3 @@ class WebExtractor:
         ]
         final_cols = [c for c in final_cols if c in extracted_df.columns]
         return extracted_df.reset_index(drop=True).loc[:, final_cols]
-
