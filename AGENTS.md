@@ -3,204 +3,132 @@
 ## Project overview
 
 A Python NLP pipeline analysing UK news coverage of Shamima Begum across five
-outlets (BBC, Guardian, Daily Mail, The Sun, The Independent). The pipeline
-extracts article text from the web, preprocesses it with spaCy, scores
-sentiment with three lexicon-based tools (VADER, NRC, SentiWordNet), and
-includes a k-means clustering module that groups articles by TF-IDF and
-linguistic features to identify framing patterns. The dataset is small
-(88 articles) — this is a research prototype, not a production system.
+outlets (BBC, Guardian, Daily Mail, The Mirror, The Independent). The pipeline
+extracts article text from the web, cleans boilerplate contamination,
+preprocesses with spaCy, scores sentiment with two methods (VADER lexicon and
+DeBERTa-v3 zero-shot), and includes a k-means clustering module for
+exploratory framing analysis.
+
+The core research question is a CS model evaluation: which sentiment method
+better matches human judgement on this corpus? 15 manually annotated articles
+serve as ground truth.
+
+The dataset is small (~77 articles after filtering) — this is a research
+prototype, not a production system.
 
 ## Architecture
 
 ```
 scripts/
-  ingestion/build_master_csv.py    — raw CSV → cleaned master CSV (assigns article_id)
-  run_pipeline.py                  — CLI entry point
+  ingestion/build_master_csv.py        — raw CSV → cleaned master CSV
+  run_pipeline.py                      — CLI entry point (11 menu options)
+  analysis/validate_against_manual.py  — Spearman validation vs manual labels
+  visualisation/                       — matplotlib/seaborn chart scripts
 
 src/
-  extraction/web_extractor.py      — fetches article HTML, extracts body text
+  extraction/web_extractor.py          — fetches article HTML, extracts body
   preprocessing/
-    spacy_processor.py             — SpacyProcessor + ProcessedArticle
-    filters.py                     — filter_shamima_mentions (relevance filter)
-  sentiment/lexicons/
-    sentiment_analyzer.py          — LexiconScorer + SentimentScores
+    text_cleaner.py                    — deterministic boilerplate removal
+    spacy_processor.py                 — SpacyProcessor + ProcessedArticle
+    filters.py                         — Shamima mentions, word count, opinion filter
+  sentiment/
+    lexicons/sentiment_analyzer.py     — LexiconScorer (VADER + NRC internally)
+    zeroshot_scorer.py                 — ZeroshotScorer (DeBERTa-v3 zero-shot NLI)
+    scaling.py                         — z-standardisation (independent per method)
   bias/
-    feature_builder.py             — FeatureBuilder + ArticleFeatures
-    topic_clusterer.py             — TopicClusterer: k-means on feature matrix
-  comparison/outlet_comparator.py  — outlet-level summary statistics
+    feature_builder.py                 — TF-IDF + linguistic features
+    topic_clusterer.py                 — k-means clustering
+  comparison/
+    outlet_comparator.py               — outlet-level summary statistics
+    statistical_tests.py               — Kruskal-Wallis, Dunn's, Wilcoxon, effect sizes
   pipeline/
-    config.py                      — PipelineConfig (all output paths)
-    news_pipeline.py               — orchestrates the full pipeline
+    config.py                          — PipelineConfig (all output paths)
+    news_pipeline.py                   — orchestrates the full pipeline
 
-tests/                             — unittest-based test suite
-data/raw/                          — source CSV with article metadata
-data/intermediate/                 — pipeline stage outputs (CSV checkpoints)
+data/
+  raw/                                 — source CSV with article metadata
+  manual/                              — manual_annotations.csv (human labels)
+  intermediate/                        — pipeline stage outputs (CSV checkpoints)
+  figures/                             — generated PNGs
 ```
-
-## Current state — active refactoring
-
-The pipeline is functional end-to-end. A series of refactoring tasks are
-in progress to fix code smells, remove dead code, separate preprocessing
-per lexicon, and improve testability. Each task is defined in a numbered
-prompt file under `codex_prompts/`.
-
-**Prompts must be executed in order (01 through 10).** Some prompts depend
-on changes made by earlier prompts.
 
 ## Key design decisions
 
+### Boilerplate removal via deterministic pattern matching
+
+53% of articles contain non-editorial text (comment prompts, bylines,
+privacy notices, image captions) that survived HTML extraction.
+Contamination is systematic and unevenly distributed across outlets.
+`text_cleaner.strip_boilerplate()` removes these using regex patterns
+identified by manual inspection of all 77 articles. This is applied
+once during preprocessing — `ProcessedArticle.cleaned_text` stores
+the result as a plain field.
+
+### Two sentiment methods, not three
+
+NRC Emotion Lexicon was dropped from the analysis scope. It is still
+computed internally by LexiconScorer but its columns are excluded from
+pipeline CSV output. Only VADER compound score and DeBERTa-v3 zero-shot
+P(pos)-P(neg) are carried forward.
+
+### Shared cleaned text for both models
+
+Both VADER and zero-shot scorers receive identical input via
+`article.cleaned_text`. This ensures any divergence in scores reflects
+model behaviour, not preprocessing differences.
+
+### No composite score
+
+Each method is z-standardised independently (`vader_z`, `zeroshot_z`).
+No composite mean is computed. The two z-scored columns are compared
+directly via Wilcoxon signed-rank and validated independently against
+manual labels via Spearman correlation.
+
+### Manual annotation as ground truth
+
+15 articles (3 per outlet) are hand-labelled as -1 (negative), 0
+(neutral), or +1 (positive). This CSV lives at
+`data/manual/manual_annotations.csv` and is created by the human.
+
+### Statistical tests
+
+| Test | Purpose | Input |
+|------|---------|-------|
+| Kruskal-Wallis | Do outlets differ in tone? | zeroshot_z by outlet |
+| Dunn's post-hoc | Which outlet pairs differ? | Only if K-W p < 0.05 |
+| Wilcoxon signed-rank | Do the two models systematically differ? | vader_z vs zeroshot_z |
+| Spearman × 2 | Which model matches human judgement? | manual vs vader_z, manual vs zeroshot_z |
+
 ### ProcessedArticle is the shared data object
 
-`ProcessedArticle` (in `src/preprocessing/spacy_processor.py`) is a `@dataclass`
-holding:
-- `article_id: str` — SHA-256 hash of the article URL
-- `raw_text: str` — original article body, unmodified
-- `doc: spacy.tokens.Doc` — full spaCy Doc (tokens, POS, deps, NER)
+See `src/preprocessing/spacy_processor.py`. A `@dataclass` holding:
+- `article_id: str`
+- `raw_text: str` — original extracted text, unmodified
+- `cleaned_text: str` — boilerplate-stripped, whitespace-normalised
+- `doc: spacy.tokens.Doc` — spaCy Doc built from raw_text
 
-Computed `@property` values (derived from `doc`, not stored):
-- `vader_text -> str` — whitespace-collapsed raw text for VADER. No
-  lowercasing, no tokenisation, no stop-word removal.
-- `sentiwordnet_tokens -> list[tuple[str, str, str]]` — `(lemma, wn_pos, synset_name)`
-  tuples. POS mapped from spaCy to WordNet. First-sense fallback when no
-  synsets match. Stop words, punctuation, non-alpha filtered out.
-- `nrc_tokens -> list[str]` — lowercased lemmas, stop words removed,
-  alpha only.
-- `lemmas -> list[str]` — same as `nrc_tokens` (kept for TF-IDF / clustering).
-- `tokens -> list[str]` — lowercased token text, punctuation excluded.
+Computed `@property` values:
+- `lemmas -> list[str]` — lowercased lemmas, stops/punct/non-alpha removed
+- `nrc_tokens -> list[str]` — alias for `lemmas`
 
-`ProcessedArticle` is created once per article by `SpacyProcessor` and passed
-to every downstream stage. No stage should call `nlp()` again.
-
-### Each lexicon scorer receives only the preprocessing it needs
-
-| Scorer         | Input property          | Preprocessing applied                                                    |
-|----------------|-------------------------|--------------------------------------------------------------------------|
-| VADER          | `vader_text`            | Whitespace collapse only. No lowercasing, tokenisation, or stop removal. |
-| SentiWordNet   | `sentiwordnet_tokens`   | Tokenised, lemmatised, POS-tagged, first-sense WSD, lowercased, stops removed. |
-| NRC            | `nrc_tokens`            | Tokenised, lemmatised, lowercased, stop words removed.                   |
-| TF-IDF         | `lemmas`                | Same as nrc_tokens.                                                      |
-
-### FeatureBuilder produces the feature matrix for clustering
-
-`FeatureBuilder.build(articles)` returns a `scipy.sparse.csr_matrix` combining:
-- TF-IDF features (up to 300 unigrams/bigrams from lemmatised text)
-- 6 scaled linguistic features (adj_rate, adv_rate, modal_rate,
-  attribution_rate, passive_rate, ner_rate)
-
-This matrix is the input to `TopicClusterer`. The builder also exposes
-`feature_names` for inspecting which TF-IDF terms and linguistic features
-matter most per cluster.
+Created once per article by `SpacyProcessor`. Passed to every downstream
+stage. No stage calls `nlp()` again.
 
 ### PipelineConfig centralises paths
 
-All output paths live in a `PipelineConfig` dataclass in
-`src/pipeline/config.py`. `NewsPipeline.__init__` takes a `PipelineConfig`.
-No path strings are hardcoded in `news_pipeline.py`.
-
-### SentimentScores is a typed return value
-
-`SentimentScores` (in `sentiment_analyzer.py`) is a dataclass. The pipeline
-flattens it with `dataclasses.asdict()` — no manual per-field mapping.
-
-### CSV checkpoints are for debugging, not data transfer
-
-The pipeline writes CSVs at each stage for inspection. But in-memory objects
-are the primary data transfer between stages in `pipeline.run()`.
-
-### article_id is assigned once at ingestion
-
-`build_master_csv` creates the `article_id` column (SHA-256 of URL).
-No downstream stage recomputes it. `_ensure_article_id` is removed.
-
-### No abstract base classes unless needed
-
-Use concrete classes and simple composition.
-
-## Scope boundaries — what Codex must NOT do
-
-- **Never modify files outside the task scope.** Each prompt specifies exactly
-  which files to create or modify. Do not touch anything else.
-- **Never add dependencies** not already listed in the project (spaCy, pandas,
-  scikit-learn, NLTK, nrclex, scipy, numpy).
-- **Never add logging frameworks, config systems, CLI arguments, or YAML files.**
-- **Never add abstract base classes, protocols, or generics** unless the prompt
-  explicitly requests them.
-- **Never use pytest fixtures or parametrize.** Use `unittest.TestCase` only.
-- **Never create `__init__.py` changes** unless the prompt explicitly says to.
-- **Never add type: ignore comments** unless strictly necessary for spaCy stubs.
-- **Never execute code at module level** (no bare function calls, no
-  `nlp = spacy.load(...)` at module scope).
-- **Never call `nlp()` on text that has already been processed.** Read from
-  `ProcessedArticle.doc` instead.
-- **Never write unit tests.** The human will write tests later. Do not create
-  test files or test methods unless the prompt explicitly asks.
-- **Never delete or rename test files** that already exist.
+All output paths live in `src/pipeline/config.py`. No path strings are
+hardcoded in `news_pipeline.py`.
 
 ## Coding conventions
 
-### Style
 - Python 3.11+. Type hints on all public method signatures.
-- Imports: standard library first, blank line, third-party, blank line, local.
-- Docstrings on public classes and methods.
-- No logging framework — `print()` sparingly for pipeline progress only.
-
-### Naming
-- Classes: `PascalCase`. Methods/variables: `snake_case`.
-- Private: single underscore prefix. Constants: `UPPER_SNAKE_CASE`.
-- Files: `snake_case.py`.
-
-### Error handling
+- PEP 8. No logging framework — `print()` sparingly for progress only.
 - `ValueError` for invalid input. Messages must name the specific problem.
-- Do not catch and silence exceptions without a recovery strategy.
+- `unittest.TestCase` for tests. No pytest fixtures or parametrize.
+- No abstract base classes unless the prompt explicitly requests them.
 
-### Dependencies
-- spaCy (`en_core_web_sm`) — tokenization, POS, NER, dependency parse.
-- pandas — data transport.
-- scikit-learn — TF-IDF, KMeans, StandardScaler, silhouette_score.
-- NLTK — VADER, SentiWordNet, WordNet.
-- nrclex — NRC emotion lexicon.
-- numpy, scipy — numeric operations, sparse matrices.
+## Dependencies
 
-## Code smells to avoid
-
-- **Redundant spaCy calls.** Read from `ProcessedArticle.doc`, never call
-  `nlp()` again.
-- **Column-name coupling.** Pass `ProcessedArticle` objects, not DataFrames
-  with hardcoded column names.
-- **Module-level side effects.** No code at import time.
-- **God objects.** Pipeline orchestrates; business logic lives in its own module.
-- **Per-field mapping.** Use `dataclasses.asdict()` instead of mapping each
-  field manually.
-- **Per-call instantiation.** Expensive objects (NRCLex, SentimentIntensityAnalyzer)
-  are created in `__init__`, not per article.
-
-## Files to read before modifying a module
-
-| Changing...                        | Read first                                         |
-|------------------------------------|----------------------------------------------------|
-| `src/preprocessing/spacy_processor.py` | `src/sentiment/lexicons/sentiment_analyzer.py`  |
-| `src/sentiment/lexicons/sentiment_analyzer.py` | `src/preprocessing/spacy_processor.py`   |
-| `src/pipeline/news_pipeline.py`    | `src/pipeline/config.py`, `src/bias/topic_clusterer.py` |
-| `src/pipeline/config.py`          | `src/pipeline/news_pipeline.py`                    |
-| `scripts/ingestion/build_master_csv.py` | `src/pipeline/news_pipeline.py`               |
-| `src/preprocessing/filters.py`    | `src/preprocessing/article_preprocessor.py`        |
-| any test file                      | the source file it tests + existing test patterns  |
-
-## Prompt execution order
-
-```
-codex_prompts/
-  01_move_filter_delete_dead_preprocessor.md
-  02_assign_article_id_at_ingestion.md
-  03_extract_pipeline_config.md
-  04_add_vader_text_property.md
-  05_add_sentiwordnet_tokens_with_pos.md
-  06_add_nrc_tokens_property.md
-  07_update_lexicon_scorer.md
-  08_flatten_score_sentiment_with_asdict.md
-  09_cache_nrclex_instance.md
-  10_fix_run_pipeline_missing_import.md
-```
-
-Execute in order. After each prompt, verify the change compiles and
-the existing tests still pass before proceeding.
+spaCy (en_core_web_sm), pandas, scikit-learn, NLTK (VADER), nrclex,
+scipy, numpy, matplotlib, seaborn, transformers (DeBERTa-v3),
+scikit-posthocs.
