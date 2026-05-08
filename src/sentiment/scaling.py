@@ -12,7 +12,6 @@ def scale_sentiment(
     """Z-score each polarity column independently.
 
     Adds ``<method>_z`` columns (e.g. ``vader_z``, ``zeroshot_z``).
-    No composite score is computed.
     """
     scaled_df = df.copy()
 
